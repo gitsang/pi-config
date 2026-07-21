@@ -123,5 +123,6 @@
         ]
       }
     }
-  }
+  },
+  "hideThinkingBlock": false
 }
