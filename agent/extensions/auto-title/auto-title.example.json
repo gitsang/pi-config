@@ -1,0 +1,10 @@
+{
+  "_comment": "Copy to ~/.pi/agent/auto-title.json (global) or .pi/auto-title.json (project). Remove keys you don't need; all are optional.",
+  "model": "saigw/glm-5.2",
+  "onFirstTurn": true,
+  "onCompact": true,
+  "refreshEveryTurns": 0,
+  "maxTitleLength": 60,
+  "language": "auto",
+  "setTerminalTitle": false
+}

@@ -1,0 +1,9 @@
+{
+  "model": "",
+  "onFirstTurn": true,
+  "onCompact": true,
+  "refreshEveryTurns": 25,
+  "maxTitleLength": 60,
+  "language": "auto",
+  "setTerminalTitle": false
+}

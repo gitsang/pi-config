@@ -2,7 +2,7 @@
   "lastChangelogVersion": "0.80.10",
   "theme": "dark",
   "defaultProvider": "saigw",
-  "defaultModel": "glm-5.2",
+  "defaultModel": "kimi-k2.7-code",
   "packages": [
     "npm:pi-subagents",
     "npm:pi-btw",
