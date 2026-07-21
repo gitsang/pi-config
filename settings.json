@@ -4,6 +4,8 @@
   "defaultProvider": "saigw",
   "defaultModel": "glm-5.2",
   "packages": [
-    "npm:pi-subagents"
-  ]
+    "npm:pi-subagents",
+    "npm:pi-btw"
+  ],
+  "defaultThinkingLevel": "medium"
 }
