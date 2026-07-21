@@ -331,7 +331,7 @@ function renderFooter(ctx: any, footerData: any, width: number): string[] {
 		{ key: "cr", pri: 50, group: 0, text: `${c(P.blue5, cacheReadG)} ${c(P.blue5, fmtTok(u.cacheRead))}` },
 		{ key: "cw", pri: 40, group: 0, text: `${c(P.purple, cacheWriteG)} ${c(P.purple, fmtTok(u.cacheWrite))}` },
 		{ key: "ch", pri: 45, group: 0, text: `${c(P.yellow, cacheHitG)} ${c(P.yellow, u.ch == null ? "0%" : `${Math.round(u.ch)}%`)}` },
-		{ key: "cost", pri: 70, group: 0, text: `${c(P.orange, priceG)} ${c(P.orange, `$${u.cost.toFixed(3)}`)}` },
+		{ key: "cost", pri: 70, group: 0, text: `${c(P.orange, priceG)} ${c(P.orange, u.cost.toFixed(3))}` },
 	];
 	const cc = ctxColor(ctxPct);
 	const l3R: Item[] = [
