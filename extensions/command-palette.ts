@@ -414,7 +414,7 @@ async function openPalette(pi: ExtensionAPI, ctx: PaletteCtx): Promise<void> {
     {
       overlay: true,
       overlayOptions: {
-        anchor: "top-center",
+        anchor: "center",
         width: "72%",
         minWidth: 52,
         margin: 1,
