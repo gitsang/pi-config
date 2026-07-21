@@ -22,3 +22,10 @@ Thumbs.db
 
 # ===== Permission system runtime logs (audit data, transient) =====
 extensions/pi-permission-system/logs/
+
+# ===== Checkpoint extension shadow-git runtime (auto-managed) =====
+checkpoints/
+
+# ===== Backup files =====
+*.bak.*
+settings.json.bak.*
