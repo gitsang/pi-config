@@ -20,9 +20,6 @@ Thumbs.db
 *.swo
 *.log
 
-# ===== Permission system runtime logs (audit data, transient) =====
-agent/extensions/pi-permission-system/logs/
-
 # ===== Checkpoint extension runtime (git worktree copies) =====
 checkpoints/
 
@@ -35,3 +32,8 @@ checkpoints/
 # ===== Backup files =====
 *.bak.*
 settings.json.bak.*
+
+# ===== Agents =====
+.worktrees
+.omx
+.sisyphus

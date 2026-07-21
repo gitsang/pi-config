@@ -2,7 +2,7 @@
   "lastChangelogVersion": "0.80.10",
   "theme": "dark",
   "defaultProvider": "saigw",
-  "defaultModel": "kimi-k2.7-code",
+  "defaultModel": "glm-5.2",
   "packages": [
     "npm:pi-subagents",
     "npm:pi-btw",
@@ -10,7 +10,7 @@
     "npm:@pi-plugins/checkpoint",
     "npm:@quintinshaw/pi-dynamic-workflows"
   ],
-  "defaultThinkingLevel": "medium",
+  "defaultThinkingLevel": "high",
   "subagents": {
     "defaultModel": "saigw/glm-5.2",
     "agentOverrides": {
