@@ -287,7 +287,7 @@ function renderFooter(ctx: any, footerData: any, width: number): string[] {
 	const cacheHitG = "\uf49b"; // nf-md-database_check
 	const cacheReadG = "\udb84\ude5b"; // nf-cod-database (read)
 	const cacheWriteG = "\udb84\ude59"; // nf-cod-database (write)
-	const priceG = "\uf155"; // nf-fa-dollar
+	const priceG = "\uef8d"; // nf-fa-dollar
 
 	const SP2 = "  "; // intra-group spacer (usage, model+thinking)
 	const SP1 = " "; // intra-group spacer (context, line 4)
@@ -312,7 +312,7 @@ function renderFooter(ctx: any, footerData: any, width: number): string[] {
 		{ key: "cr", pri: 50, group: 0, text: `${c(P.blue5, cacheReadG)} ${c(P.blue5, fmtTok(u.cacheRead))}` },
 		{ key: "cw", pri: 40, group: 0, text: `${c(P.purple, cacheWriteG)} ${c(P.purple, fmtTok(u.cacheWrite))}` },
 		{ key: "ch", pri: 45, group: 0, text: `${c(P.yellow, cacheHitG)} ${c(P.yellow, u.ch == null ? "0%" : `${Math.round(u.ch)}%`)}` },
-		{ key: "cost", pri: 70, group: 0, text: `${c(P.orange, priceG)}${c(P.orange, u.cost.toFixed(3))}` },
+		{ key: "cost", pri: 70, group: 0, text: `${c(P.orange, priceG)} ${c(P.orange, "$" + u.cost.toFixed(3))}` },
 	];
 	const cc = ctxColor(ctxPct);
 	const l3R: Item[] = [
