@@ -1,0 +1,21 @@
+# ===== Secrets — never commit =====
+auth.json
+*.key
+*.pem
+*.p12
+.env
+.env.*
+
+# ===== Session history (transient; may contain conversation/API data) =====
+sessions/
+
+# ===== Auto-managed binaries (re-downloaded by pi as needed) =====
+bin/
+
+# ===== OS / editor noise =====
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+*.log

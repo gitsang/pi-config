@@ -1,0 +1,158 @@
+{
+  "providers": {
+    "saigw": {
+      "baseUrl": "https://aigw.cn.c8g.top/v1",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "deepseek-v4-pro",
+          "name": "DeepSeek V4 Pro",
+          "contextWindow": 1000000,
+          "maxTokens": 384000,
+          "input": ["text"],
+          "reasoning": true,
+          "cost": {
+            "input": 1.74,
+            "output": 3.48,
+            "cacheRead": 0.145,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "requiresReasoningContentOnAssistantMessages": true,
+            "thinkingFormat": "deepseek",
+            "reasoningEffortMap": {
+              "minimal": "high",
+              "low": "high",
+              "medium": "high",
+              "high": "high",
+              "xhigh": "max"
+            }
+          }
+        },
+        {
+          "id": "deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash",
+          "contextWindow": 1000000,
+          "maxTokens": 384000,
+          "input": ["text"],
+          "reasoning": true,
+          "cost": {
+            "input": 0.14,
+            "output": 0.28,
+            "cacheRead": 0.028,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "requiresReasoningContentOnAssistantMessages": true,
+            "thinkingFormat": "deepseek",
+            "reasoningEffortMap": {
+              "minimal": "high",
+              "low": "high",
+              "medium": "high",
+              "high": "high",
+              "xhigh": "max"
+            }
+          }
+        },
+        {
+          "id": "glm-5.2",
+          "name": "GLM 5.2",
+          "contextWindow": 1000000,
+          "maxTokens": 131072,
+          "input": ["text"],
+          "cost": {
+            "input": 8,
+            "output": 28,
+            "cacheRead": 2,
+            "cacheWrite": 0
+          }
+        },
+        {
+          "id": "kimi-k3",
+          "name": "Kimi K3",
+          "contextWindow": 1048576,
+          "maxTokens": 131072,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 20,
+            "output": 100,
+            "cacheRead": 2,
+            "cacheWrite": 0
+          }
+        },
+        {
+          "id": "kimi-k2.7-code",
+          "name": "Kimi K2.7 Code",
+          "contextWindow": 262144,
+          "maxTokens": 262144,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 6.50,
+            "output": 27,
+            "cacheRead": 1.30,
+            "cacheWrite": 0
+          }
+        },
+        {
+          "id": "qwen3.7-max",
+          "name": "Qwen3.7 Max",
+          "contextWindow": 1000000,
+          "maxTokens": 65536,
+          "input": ["text"],
+          "cost": {
+            "input": 2.50,
+            "output": 7.50,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        },
+        {
+          "id": "mimo-v2.5-pro",
+          "name": "MiMo V2.5 Pro",
+          "contextWindow": 1048576,
+          "maxTokens": 131072,
+          "input": ["text"],
+          "cost": {
+            "input": 1.00,
+            "output": 3.00,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        },
+        {
+          "id": "minimax-m3",
+          "name": "MiniMax M3",
+          "contextWindow": 512000,
+          "maxTokens": 128000,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 0.30,
+            "output": 1.20,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        },
+        {
+          "id": "grok-4.5",
+          "name": "Grok 4.5",
+          "contextWindow": 500000,
+          "maxTokens": 500000,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 2.00,
+            "output": 6.00,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        },
+        {
+          "id": "ratatosk",
+          "name": "Ratatosk",
+          "contextWindow": 131072,
+          "maxTokens": 16384,
+          "input": ["text", "image"]
+        }
+      ]
+    }
+  }
+}
