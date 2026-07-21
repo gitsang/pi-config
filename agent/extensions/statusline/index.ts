@@ -13,8 +13,9 @@
  * Average TPS = arithmetic mean across all completed assistant responses in the session.
  * CH   = cumulative cache-hit rate over the current branch.
  *
- * Nerd Font glyphs (\uf01b/\uf01a) render as 2 columns but pi-tui's visibleWidth
- * counts them as 1, so we correct with trueWidth = visibleWidth + nerdGlyphCount.
+ * Nerd Font glyphs render as 2 columns but pi-tui's visibleWidth counts them
+ * as 1; we size/pad with visibleWidth (matching pi's line checks) so ctx stays
+ * right-aligned to pi's right edge.
  */
 
 import { isAbsolute, relative, resolve, sep } from "node:path";
@@ -42,30 +43,10 @@ const P = {
 const c = (rgb: string, s: string): string =>
 	s === "" ? "" : `\x1b[38;2;${rgb}m${s}\x1b[0m`;
 
-// ─── width helpers ─────────────────────────────────────────────────────────────
-// Nerd Font PUA: BMP U+E000–U+F8FF and supplementary plane U+F0000–U+FFFFD.
-function isNerdCp(cp: number): boolean {
-	return (cp >= 0xe000 && cp <= 0xf8ff) || (cp >= 0xf0000 && cp <= 0xffffd);
-}
-function nerdCount(s: string): number {
-	let n = 0;
-	for (const ch of s.replace(/\x1b\[[0-9;]*m/g, "")) {
-		const cp = ch.codePointAt(0)!;
-		if (isNerdCp(cp)) n++;
-	}
-	return n;
-}
-/** True display width, correcting Nerd Font PUA glyphs that visibleWidth undercounts. */
-function trueWidth(s: string): number {
-	return visibleWidth(s) + nerdCount(s);
-}
-
-/** Truncate to a true-width budget, accounting for Nerd Font glyphs that visibleWidth undercounts. */
-function truncTrue(s: string, maxTrue: number): string {
-	if (maxTrue <= 0) return "";
-	if (trueWidth(s) <= maxTrue) return s;
-	return truncateToWidth(s, Math.max(1, maxTrue - nerdCount(s)), "…");
-}
+// We size and pad every line with pi-tui's visibleWidth, matching pi's own
+// line-width validation (lines with visibleWidth > width crash the TUI).
+// Nerd Font PUA glyphs count as 1 column here even though they render as 2,
+// so a line may visually exceed width by the glyph count — safe and expected.
 
 // ─── formatters ──────────────────────────────────────────────────────────────
 function fmtTok(n: number): string {
@@ -141,7 +122,7 @@ function renderItems(items: Item[], kept: Set<string>, sp: string): string {
 }
 
 function itemsWidth(items: Item[], kept: Set<string>, sp: string): number {
-	return trueWidth(renderItems(items, kept, sp));
+	return visibleWidth(renderItems(items, kept, sp));
 }
 
 /** Fit a line into `width` by dropping lowest-priority non-mandatory items first. */
@@ -155,7 +136,7 @@ function fitLine(items: Item[], width: number, sp: string): string {
 		kept.delete(it.key);
 		if (itemsWidth(live, kept, sp) <= width) return renderItems(live, kept, sp);
 	}
-	return truncTrue(renderItems(live, kept, sp), width); // only mandatory remain, truncate to fit
+	return truncateToWidth(renderItems(live, kept, sp), width); // only mandatory remain, truncate to fit
 }
 
 /** Render a split line: left items left-aligned, right items right-aligned. */
@@ -174,8 +155,8 @@ function splitLine(
 	const build = (lKept: Set<string>, rKept: Set<string>): { ok: boolean; line: string } => {
 		const left = renderItems(lLive, lKept, leftSp);
 		const right = renderItems(rLive, rKept, rightSp);
-		const lw = trueWidth(left);
-		const rw = trueWidth(right);
+		const lw = visibleWidth(left);
+		const rw = visibleWidth(right);
 		const gap = lw > 0 && rw > 0 ? 1 : 0;
 		if (lw + gap + rw <= width) {
 			return { ok: true, line: left + " ".repeat(width - lw - rw) + right };
@@ -190,12 +171,12 @@ function splitLine(
 	// 2. single left item: truncate it to keep the full right side intact
 	if (lLive.length === 1 && rLive.length > 0) {
 		const right = renderItems(rLive, rAll, rightSp);
-		const rw = trueWidth(right);
+		const rw = visibleWidth(right);
 		const maxLeft = width - rw - 1;
 		if (maxLeft >= 4) {
-			const leftTrunc = truncTrue(renderItems(lLive, lAll, leftSp), maxLeft);
-			if (trueWidth(leftTrunc) + 1 + rw <= width) {
-				return leftTrunc + " ".repeat(width - trueWidth(leftTrunc) - rw) + right;
+			const leftTrunc = truncateToWidth(renderItems(lLive, lAll, leftSp), maxLeft, "…");
+			if (visibleWidth(leftTrunc) + 1 + rw <= width) {
+				return leftTrunc + " ".repeat(width - visibleWidth(leftTrunc) - rw) + right;
 			}
 		}
 	}
@@ -217,10 +198,10 @@ function splitLine(
 	// 4. only mandatory remain; truncate left to fit
 	const left = renderItems(lLive, lKept, leftSp);
 	const right = renderItems(rLive, rKept, rightSp);
-	const rw = trueWidth(right);
+	const rw = visibleWidth(right);
 	const gap = rw > 0 ? 1 : 0;
-	const leftTrunc = truncTrue(left, Math.max(0, width - rw - gap));
-	return leftTrunc + " ".repeat(Math.max(0, width - trueWidth(leftTrunc) - rw)) + right;
+	const leftTrunc = truncateToWidth(left, Math.max(0, width - rw - gap), "…");
+	return leftTrunc + " ".repeat(Math.max(0, width - visibleWidth(leftTrunc) - rw)) + right;
 }
 
 // ─── per-message timing state ────────────────────────────────────────────────
@@ -331,7 +312,7 @@ function renderFooter(ctx: any, footerData: any, width: number): string[] {
 		{ key: "cr", pri: 50, group: 0, text: `${c(P.blue5, cacheReadG)} ${c(P.blue5, fmtTok(u.cacheRead))}` },
 		{ key: "cw", pri: 40, group: 0, text: `${c(P.purple, cacheWriteG)} ${c(P.purple, fmtTok(u.cacheWrite))}` },
 		{ key: "ch", pri: 45, group: 0, text: `${c(P.yellow, cacheHitG)} ${c(P.yellow, u.ch == null ? "0%" : `${Math.round(u.ch)}%`)}` },
-		{ key: "cost", pri: 70, group: 0, text: `${c(P.orange, priceG)} ${c(P.orange, u.cost.toFixed(3))}` },
+		{ key: "cost", pri: 70, group: 0, text: `${c(P.orange, priceG)}${c(P.orange, u.cost.toFixed(3))}` },
 	];
 	const cc = ctxColor(ctxPct);
 	const l3R: Item[] = [
