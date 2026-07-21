@@ -5,7 +5,8 @@
   "defaultModel": "glm-5.2",
   "packages": [
     "npm:pi-subagents",
-    "npm:pi-btw"
+    "npm:pi-btw",
+    "npm:@gotgenes/pi-permission-system"
   ],
   "defaultThinkingLevel": "medium"
 }

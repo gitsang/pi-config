@@ -19,3 +19,6 @@ Thumbs.db
 *.swp
 *.swo
 *.log
+
+# ===== Permission system runtime logs (audit data, transient) =====
+extensions/pi-permission-system/logs/
