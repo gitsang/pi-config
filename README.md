@@ -2,6 +2,8 @@
 
 My configuration for the [pi](https://github.com/earendil-works/pi-coding-agent) coding agent.
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
 ## What's tracked
 
 | File | Description |
