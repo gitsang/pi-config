@@ -21,7 +21,7 @@ Thumbs.db
 *.log
 
 # ===== Permission system runtime logs (audit data, transient) =====
-extensions/pi-permission-system/logs/
+agent/extensions/pi-permission-system/logs/
 
 # ===== Checkpoint extension runtime (git worktree copies) =====
 checkpoints/
