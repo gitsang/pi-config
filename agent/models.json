@@ -1,5 +1,89 @@
 {
   "providers": {
+    "saigw-anthropic": {
+      "baseUrl": "https://aigw.cn.c8g.top/anthropic/v1",
+      "api": "anthropic-messages",
+      "apiKey": "!jq -rj '.saigw.key' /home/sang/.pi/agent/auth.json",
+      "models": [
+        {
+          "id": "claude-sonnet-5",
+          "name": "Claude Sonnet 5",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 1048576,
+          "maxTokens": 131072,
+          "compat": {
+            "forceAdaptiveThinking": true
+          }
+        }
+      ]
+    },
+    "saigw-openai": {
+      "baseUrl": "https://aigw.cn.c8g.top/v1",
+      "api": "openai-responses",
+      "apiKey": "!jq -rj '.saigw.key' /home/sang/.pi/agent/auth.json",
+      "models": [
+        {
+          "id": "gpt-5.4-mini",
+          "name": "GPT 5.4 Mini",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 400000,
+          "maxTokens": 128000,
+          "thinkingLevelMap": {
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "xhigh"
+          }
+        },
+        {
+          "id": "gpt-5.6-sol",
+          "name": "GPT 5.6 Sol",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 361472,
+          "maxTokens": 128000,
+          "thinkingLevelMap": {
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "xhigh",
+            "max": "max"
+          }
+        },
+        {
+          "id": "gpt-5.6-terra",
+          "name": "GPT 5.6 Terra",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 361472,
+          "maxTokens": 128000,
+          "thinkingLevelMap": {
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "xhigh",
+            "max": "max"
+          }
+        },
+        {
+          "id": "gpt-5.6-luna",
+          "name": "GPT 5.6 Luna",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 361472,
+          "maxTokens": 128000,
+          "thinkingLevelMap": {
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "xhigh",
+            "max": "max"
+          }
+        }
+      ]
+    },
     "saigw": {
       "baseUrl": "https://aigw.cn.c8g.top/v1",
       "api": "openai-completions",
