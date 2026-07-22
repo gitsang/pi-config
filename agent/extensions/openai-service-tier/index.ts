@@ -336,11 +336,34 @@ export default function (pi: ExtensionAPI) {
 		if (ctx.hasUI) ctx.ui.notify(msg, level);
 	};
 
+	/** Footer status key consumed by other extensions (e.g. statusline) via
+	 *  footerData.getExtensionStatuses(). Value: tier name, "off", or undefined. */
+	const STATUS_KEY = "service-tier";
+
+	/** Publish the active tier for the current (or given) model as a footer
+	 *  status. setStatus() triggers a TUI re-render, so the display updates live. */
+	const publishStatus = (
+		ctx: ExtensionContext,
+		model?: { provider: string; id: string } | null,
+	) => {
+		const m = model ?? ctx.model;
+		if (!m) {
+			ctx.ui.setStatus(STATUS_KEY, undefined);
+			return;
+		}
+		const { tier } = resolveActive(state.config, state.overrides, m.provider, m.id);
+		// undefined → not configured / no active tier → clear status
+		// null     → explicitly disabled via /service-tier off → "off"
+		// string   → the tier name being injected
+		ctx.ui.setStatus(STATUS_KEY, tier === undefined ? undefined : tier === null ? "off" : tier);
+	};
+
 	const reloadConfig = (ctx: ExtensionContext) => {
 		const result = loadConfig(ctx);
 		state.config = result.config;
 		state.warnings = result.warnings;
 		state.loaded = true;
+		publishStatus(ctx);
 	};
 
 	const currentEntry = (ctx: ExtensionContext): { entry: ResolvedEntry | null; provider: string; id: string } | null => {
@@ -360,6 +383,11 @@ export default function (pi: ExtensionAPI) {
 				"warning",
 			);
 		}
+	});
+
+	// Active tier depends on the current model; re-publish on model switch.
+	pi.on("model_select", (event, ctx) => {
+		publishStatus(ctx, event.model);
 	});
 
 	pi.on("before_provider_request", (event, ctx) => {
@@ -488,10 +516,12 @@ export default function (pi: ExtensionAPI) {
 				}
 				if (sub === "off") {
 					setOverride(ctx, cur.provider, cur.id, null);
+					publishStatus(ctx);
 					notify(ctx, `service-tier: OFF for ${modelKey(cur.provider, cur.id)} (no service_tier sent)`, "info");
 				} else {
 					// on / reset → clear override, fall back to config default
 					state.overrides.delete(modelKey(cur.provider, cur.id));
+					publishStatus(ctx);
 					const active = resolveActive(state.config, state.overrides, cur.provider, cur.id);
 					const label =
 						active.source === "default"
@@ -533,6 +563,7 @@ export default function (pi: ExtensionAPI) {
 				);
 			}
 			setOverride(ctx, cur.provider, cur.id, tier);
+			publishStatus(ctx);
 			notify(ctx, `service-tier: set to "${tier}" for ${modelKey(cur.provider, cur.id)} (session override)`, "info");
 		},
 	});

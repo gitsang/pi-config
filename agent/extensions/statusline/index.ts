@@ -3,7 +3,7 @@
  *
  * Default 4-line footer (left/right aligned per line):
  *   line 1: cwd (left) · branch (right)
- *   line 2: session title (left) · model thinking (right)
+ *   line 2: session title (left) · model thinking service-tier (right)
  *   line 3: ↑in ↓out R W CH% $ (left) · ctx [bar] pct used/window (right)
  *   line 4: ttft <cur> (avg <avg>)  speed <cur> (avg <avg>)  — spaces, color-coded
  *
@@ -96,6 +96,29 @@ function progressBar(pct: number | null, color: string): string {
 	const cells = 8;
 	const filled = pct == null ? 0 : Math.round((pct / 100) * cells);
 	return `[${c(color, "█".repeat(filled))}${c(P.comment, "░".repeat(cells - filled))}]`;
+}
+
+// service-tier display: reads the "service-tier" footer status published by the
+// openai-service-tier extension (via ctx.ui.setStatus). Absent when that
+// extension isn't installed or the current model isn't configured → item drops.
+function tierColor(tier: string): string {
+	switch (tier) {
+		case "priority":
+			return P.orange;
+		case "flex":
+			return P.blue;
+		case "scale":
+			return P.green;
+		case "off":
+			return P.comment;
+		default:
+			return P.fgDark; // default, auto, or custom tier
+	}
+}
+function formatServiceTier(s: string | undefined): string {
+	if (!s) return "";
+	const glyph = "\uf0e7"; // nf-fa-bolt — speed/precedence indicator
+	return `${c(tierColor(s), glyph)} ${c(tierColor(s), s)}`;
 }
 
 // ─── layout items ───────────────────────────────────────────────────────────
@@ -271,6 +294,7 @@ function renderFooter(ctx: any, footerData: any, width: number): string[] {
 	const model = ctx.model;
 	const modelId: string = model?.id ?? "no-model";
 	const thinking = currentThinking(ctx);
+	const stier = footerData.getExtensionStatuses().get("service-tier");
 	const u = computeUsage(ctx);
 	const ctxUsage = ctx.getContextUsage();
 	const ctxPct: number | null = ctxUsage?.percent ?? null;
@@ -303,6 +327,7 @@ function renderFooter(ctx: any, footerData: any, width: number): string[] {
 	const l2R: Item[] = [
 		{ key: "model", pri: 95, group: 0, text: c(P.blue, modelId) },
 		{ key: "thinking", pri: 40, group: 0, text: c(P.magenta, thinking) },
+		{ key: "stier", pri: 35, group: 0, text: formatServiceTier(stier) },
 	];
 
 	// ── line 3: usage (left) · context (right) ──
