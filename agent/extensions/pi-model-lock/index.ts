@@ -1,39 +1,58 @@
 /**
- * pi-model-lock — prevent in-session model switches from overwriting the
- * global `defaultModel`/`defaultProvider` in `~/.pi/agent/settings.json`.
+ * pi-model-lock — prevent in-session model/thinking changes from overwriting
+ * the global `defaultModel`/`defaultProvider`/`defaultThinkingLevel` in
+ * `~/.pi/agent/settings.json`.
  *
- * pi's `setModel()` (used by `/model`, `Ctrl+P` cycling, and `Ctrl+L` model
- * selector) unconditionally writes the switched-to model to settings.json as
- * the new global default. There is no upstream opt-out. This extension
- * restores the previous default right after pi's write lands, so the
- * in-session model still changes but the persisted default is preserved.
+ * pi persists in-session changes to the global default unconditionally, with
+ * no upstream opt-out:
+ *   - `setModel()` (used by `/model`, `Ctrl+P` cycling, `Ctrl+L` selector)
+ *     writes the switched-to model via `setDefaultModelAndProvider()`.
+ *   - `setThinkingLevel()` (used by model switches, thinking-level cycling,
+ *     and `/thinking`) writes the new level via `setDefaultThinkingLevel()`
+ *     whenever the level actually changes.
+ *
+ * This extension restores the previous default right after each write lands,
+ * so the in-session model/thinking level still changes but the persisted
+ * defaults are preserved.
  *
  * Behavior is driven entirely by the sibling `config.json`:
  *
- *   { "enable": true }   — restore the default after every switch (default)
+ *   { "enable": true }   — restore the defaults after every change (default)
  *   { "enable": false }  — do nothing; pi's built-in behavior applies
  *
  * `enable` is re-read on every switch, so editing config.json takes effect on
  * the next model switch without a reload.
  *
  * Commands (for convenience; not part of config.json):
- *   /model-lock   — show status (enable state, protected default, current model)
- *   /model-save   — persist the CURRENT session model as the new global default
- *                   (one-time write; the protected default is updated to match,
- *                    so later switches in this session preserve the new value)
+ *   /model-lock   — show status (enable state, protected defaults, current
+ *                   model + thinking level)
+ *   /model-save   — persist the CURRENT session model AND thinking level as
+ *                   the new global defaults (one-time write; the protected
+ *                   defaults are updated to match, so later changes in this
+ *                   session preserve the new values)
  *
- * Why snapshot at session_start instead of at event time: pi enqueues the
- * settings write as a microtask (`enqueueWrite` → `.then(...)`) right before
- * awaiting `_emitModelSelect`. By the time the `model_select` handler runs,
- * pi's write may already have landed — so reading "old" value at event time
- * can capture the *new* model and lose the real default. Snapshotting once at
- * session start (before any switch) avoids that race.
+ * Why snapshot at session_start instead of at event time: pi enqueues each
+ * settings write as a microtask (`enqueueWrite` → `.then(...)`) on a shared
+ * `writeQueue` right before emitting the corresponding event
+ * (`model_select` / `thinking_level_select`). By the time a handler runs,
+ * pi's write may already have landed — so reading the "old" value at event
+ * time can capture the *new* value and lose the real default. Snapshotting
+ * once at session start (before any change) avoids that race.
  *
- * Known limitation: the protected default is the value in settings.json at
+ * Thinking level is protected via the `thinking_level_select` event, which pi
+ * fires (inside `setThinkingLevel`) exactly when it writes
+ * `defaultThinkingLevel`. That single hook covers both standalone
+ * thinking-level changes and the level change that accompanies a model
+ * switch (a model switch calls `setThinkingLevel`, which fires the event when
+ * the level actually changes). Session restore sets the level directly in
+ * agent state without calling `setThinkingLevel`, so it does not trigger the
+ * event and is correctly left alone.
+ *
+ * Known limitation: the protected defaults are the values in settings.json at
  * session start. If you hand-edit settings.json (or change it via `/settings`)
- * mid-session and then switch models, this extension restores the
- * session-start value, not your mid-session edit. Use `/model-save` to bake
- * in a new intended default.
+ * mid-session and then switch models/thinking, this extension restores the
+ * session-start values, not your mid-session edits. Use `/model-save` to bake
+ * in new intended defaults.
  */
 
 import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -47,12 +66,14 @@ const CONFIG_PATH = join(dirname(fileURLToPath(import.meta.url)), "config.json")
 interface Settings {
   defaultProvider?: string;
   defaultModel?: string;
+  defaultThinkingLevel?: string;
   [key: string]: unknown;
 }
 
 interface ProtectedDefault {
   provider: string;
   model: string;
+  thinkingLevel?: string;
 }
 
 interface Config {
@@ -94,7 +115,11 @@ function writeSettings(s: Settings): void {
 function protectedDefaultFromSettings(s: Settings | null): ProtectedDefault | null {
   if (!s) return null;
   if (!s.defaultProvider || !s.defaultModel) return null;
-  return { provider: s.defaultProvider, model: s.defaultModel };
+  return {
+    provider: s.defaultProvider,
+    model: s.defaultModel,
+    thinkingLevel: typeof s.defaultThinkingLevel === "string" ? s.defaultThinkingLevel : undefined,
+  };
 }
 
 export default function (pi: ExtensionAPI) {
@@ -164,19 +189,71 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
+  // Protect defaultThinkingLevel. pi's setThinkingLevel() writes the new
+  // level to settings.json (via setDefaultThinkingLevel) whenever the level
+  // actually changes, then fires `thinking_level_select`. This covers both
+  // standalone thinking changes and the level change that accompanies a model
+  // switch (setModel calls setThinkingLevel). Restore the protected level
+  // after pi's write lands.
+  pi.on("thinking_level_select", async (event, ctx) => {
+    if (!isEnabled()) return;
+
+    const target = protectedDefault ?? protectedDefaultFromSettings(readSettings());
+    if (!target?.thinkingLevel) return; // nothing to protect
+
+    const next = event.level;
+    // Nothing to do if the new level IS the protected level.
+    if (target.thinkingLevel === next) return;
+
+    // Wait for pi's settings write to land (file reflects the new level).
+    // pi enqueues the write as a microtask on the same writeQueue as the
+    // model write, so it may already be done or take a tick or two. If pi
+    // didn't write (e.g. the model doesn't support thinking and the level is
+    // "off"), the file keeps the protected value and the poll never matches —
+    // we then leave it untouched.
+    const deadline = 100;
+    let landed = false;
+    for (let i = 0; i < deadline; i++) {
+      const s = readSettings();
+      if (s && s.defaultThinkingLevel === next) {
+        landed = true;
+        break;
+      }
+      await sleep(10);
+    }
+    if (!landed) return;
+
+    const s = readSettings();
+    if (!s) return;
+    if (s.defaultThinkingLevel === target.thinkingLevel) return; // already correct
+    s.defaultThinkingLevel = target.thinkingLevel;
+    writeSettings(s);
+
+    if (ctx.hasUI) {
+      ctx.ui.notify(
+        `model-lock: thinking set to ${next} for this session; ` +
+          `global defaultThinkingLevel preserved (${target.thinkingLevel}).`,
+        "info",
+      );
+    }
+  });
+
   // /model-lock — show status.
   pi.registerCommand("model-lock", {
-    description: "Show pi-model-lock status (config.json enable state + protected default)",
+    description: "Show pi-model-lock status (config.json enable state + protected defaults)",
     handler: async (_args, ctx) => {
       const enabled = isEnabled();
       const cur = ctx.model;
-      const curStr = cur?.provider && cur?.id ? `${cur.provider}/${cur.id}` : "none";
-      const protStr = protectedDefault
+      const curModelStr = cur?.provider && cur?.id ? `${cur.provider}/${cur.id}` : "none";
+      const curThink = pi.getThinkingLevel() ?? "none";
+      const protModelStr = protectedDefault
         ? `${protectedDefault.provider}/${protectedDefault.model}`
         : "none";
+      const protThink = protectedDefault?.thinkingLevel ?? "none";
       ctx.ui.notify(
         `model-lock: ${enabled ? "ON" : "OFF"} (config.json) · ` +
-          `protected default: ${protStr} · current: ${curStr}`,
+          `protected: ${protModelStr} / thinking ${protThink} · ` +
+          `current: ${curModelStr} / thinking ${curThink}`,
         "info",
       );
     },
@@ -186,23 +263,27 @@ export default function (pi: ExtensionAPI) {
   // One-time write; updates the in-memory protected default so later switches
   // in this session preserve the newly saved value.
   pi.registerCommand("model-save", {
-    description: "Persist the current session model as the new global default (one-time write)",
+    description: "Persist the current session model + thinking level as the new global default (one-time write)",
     handler: async (_args, ctx) => {
       const cur = ctx.model;
       if (!cur?.provider || !cur?.id) {
         ctx.ui.notify("model-save: no current model to save.", "warning");
         return;
       }
+      const thinking = pi.getThinkingLevel();
       const s = readSettings() ?? {};
-      const prev = s.defaultProvider && s.defaultModel ? `${s.defaultProvider}/${s.defaultModel}` : "none";
+      const prevModel = s.defaultProvider && s.defaultModel ? `${s.defaultProvider}/${s.defaultModel}` : "none";
+      const prevThink = s.defaultThinkingLevel ?? "none";
       s.defaultProvider = cur.provider;
       s.defaultModel = cur.id;
+      if (thinking) s.defaultThinkingLevel = thinking;
       writeSettings(s);
-      // Keep this session's protected default in sync so subsequent switches
-      // preserve the value we just intentionally saved.
-      protectedDefault = { provider: cur.provider, model: cur.id };
+      // Keep this session's protected defaults in sync so subsequent changes
+      // preserve the values we just intentionally saved.
+      protectedDefault = { provider: cur.provider, model: cur.id, thinkingLevel: thinking };
       ctx.ui.notify(
-        `model-save: default now ${cur.provider}/${cur.id} (was ${prev}).`,
+        `model-save: default now ${cur.provider}/${cur.id} / thinking ${thinking ?? "none"} ` +
+          `(was ${prevModel} / thinking ${prevThink}).`,
         "info",
       );
     },
