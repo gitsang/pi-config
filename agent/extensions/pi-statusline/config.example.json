@@ -1,0 +1,41 @@
+{
+  "_comment": "pi-statusline config. Precedence (later overrides earlier): global ~/.pi/agent/pi-statusline.json < extension ./config.json (this dir) < project <cwd>/.pi/pi-statusline.json (trusted). Partial configs deep-merge over the built-in default. Zero config = default 4-line footer. Sources: session.cwd|session.name, footer.branch, model.id, thinking, usage.input|output|cacheRead|cacheWrite|ch|cost, ctx.percent|tokens|window|nums|bar, ttft|ttft.avg, tps|tps.avg, ext-status (key), literal (text). color: 'name' | {map:{val->name},default} | {thresholds:[{op,n,color}],default}. Palette: fg fgDark comment dark5 blue cyan blue5 magenta purple orange yellow green green1 red, or raw 'R;G;B'. format: tok pct sec1 tps1 dollars3 int raw. Use /statusline reload after edits.",
+  "lines": [
+    { "left": ["cwd"], "right": ["branch"], "sepLeft": " ", "sepRight": " " },
+    { "left": ["title"], "right": ["model", "thinking", "stier"], "sepLeft": " ", "sepRight": "  " },
+    { "left": ["tokIn", "tokOut", "cacheR", "cacheW", "cacheHit", "cost"], "right": ["ctxLabel", "ctxBar", "ctxPct", "ctxNums"], "sepLeft": "  ", "sepRight": " " },
+    { "full": ["ttft", "ttftAvg", "tps", "tpsAvg"], "sep": "  " }
+  ],
+  "modules": {
+    "cwd":      { "source": "session.cwd", "color": "fg" },
+    "title":    { "source": "session.name", "color": "comment" },
+    "branch":   { "source": "footer.branch", "color": "green" },
+    "model":    { "source": "model.id", "color": "blue" },
+    "thinking": { "source": "thinking", "color": "magenta" },
+    "stier": {
+      "source": "ext-status", "key": "service-tier", "glyph": "\uf0e7",
+      "color": { "map": { "priority": "orange", "flex": "blue", "scale": "green", "off": "comment" }, "default": "fgDark" }
+    },
+    "tokIn":    { "source": "usage.input",      "glyph": "\uf01b",        "format": "tok",       "color": "cyan" },
+    "tokOut":   { "source": "usage.output",     "glyph": "\uf01a",        "format": "tok",       "color": "green1" },
+    "cacheR":   { "source": "usage.cacheRead",  "glyph": "\udb84\ude5b",  "format": "tok",       "color": "blue5" },
+    "cacheW":   { "source": "usage.cacheWrite", "glyph": "\udb84\ude59",  "format": "tok",       "color": "purple" },
+    "cacheHit": { "source": "usage.ch",         "glyph": "\uf49b",        "format": "pct", "nullText": "0%", "color": "yellow" },
+    "cost":     { "source": "usage.cost",       "glyph": "\uef8d",        "format": "dollars3",  "color": "orange" },
+    "ctxLabel": { "source": "literal", "text": "ctx", "color": "comment" },
+    "ctxBar":   { "source": "ctx.bar", "cells": 8, "color": { "thresholds": [{ "op": "gte", "n": 80, "color": "red" }, { "op": "gte", "n": 50, "color": "yellow" }], "default": "green" } },
+    "ctxPct":   { "source": "ctx.percent", "format": "pct", "nullText": "?", "color": { "thresholds": [{ "op": "gte", "n": 80, "color": "red" }, { "op": "gte", "n": 50, "color": "yellow" }], "default": "green" } },
+    "ctxNums":  { "source": "ctx.nums", "color": "fgDark" },
+    "ttft":     { "source": "ttft", "format": "sec1", "nullText": "0.0s", "prefix": "ttft ", "color": { "thresholds": [{ "op": "gte", "n": 3000, "color": "red" }, { "op": "gte", "n": 1000, "color": "yellow" }], "default": "green" } },
+    "ttftAvg":  { "source": "ttft.avg", "format": "sec1", "prefix": "(avg ", "suffix": ")", "color": "comment" },
+    "tps":      { "source": "tps", "format": "tps1", "nullText": "0.0 tok/s", "prefix": "speed ", "color": "cyan" },
+    "tpsAvg":   { "source": "tps.avg", "format": "tps1", "prefix": "(avg ", "suffix": ")", "color": "comment" }
+  },
+  "separator": { "group": "│", "item": " ", "groupColor": "dark5" },
+  "priority": {
+    "cwd": 100, "branch": 60, "title": 30, "model": 95, "thinking": 40, "stier": 35,
+    "tokIn": 100, "tokOut": 95, "cacheR": 50, "cacheW": 40, "cacheHit": 45, "cost": 70,
+    "ctxLabel": 100, "ctxBar": 60, "ctxPct": 95, "ctxNums": 40,
+    "ttft": 100, "ttftAvg": 40, "tps": 95, "tpsAvg": 30
+  }
+}

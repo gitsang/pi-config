@@ -3,7 +3,7 @@
   "theme": "dark",
   "defaultProvider": "saigw",
   "defaultModel": "glm-5.2",
-  "defaultThinkingLevel": "max",
+  "defaultThinkingLevel": "high",
   "packages": [
     "npm:pi-subagents",
     "npm:pi-btw",
