@@ -1,0 +1,15 @@
+{
+  "_comment": "pi-git config. Copy relevant fields into config.json (global) or .pi/pi-git.json (project, trusted). All fields optional.",
+
+  "model": "google/gemini-2.5-flash",
+
+  "preview": false,
+  "confirmPush": true,
+  "confirmWrite": true,
+
+  "trailer": "Co-Authored-By: Pi <pi@local>",
+
+  "maxSteps": 12,
+  "maxDiffChars": 8000,
+  "maxContextChars": 4000
+}

@@ -1,0 +1,10 @@
+{
+  "model": null,
+  "preview": false,
+  "confirmPush": true,
+  "confirmWrite": true,
+  "trailer": null,
+  "maxSteps": 12,
+  "maxDiffChars": 8000,
+  "maxContextChars": 4000
+}
