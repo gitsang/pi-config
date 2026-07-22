@@ -7,7 +7,6 @@
   "packages": [
     "npm:pi-subagents",
     "npm:pi-btw",
-    "npm:@gotgenes/pi-permission-system",
     "npm:@pi-plugins/checkpoint",
     "npm:@quintinshaw/pi-dynamic-workflows"
   ],
