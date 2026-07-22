@@ -1,8 +1,8 @@
 {
   "lastChangelogVersion": "0.80.10",
   "theme": "dark",
-  "defaultProvider": "saigw",
-  "defaultModel": "glm-5.2",
+  "defaultProvider": "saigw-openai",
+  "defaultModel": "gpt-5.6-sol",
   "packages": [
     "npm:pi-subagents",
     "npm:pi-btw",
@@ -14,115 +14,53 @@
   "subagents": {
     "defaultModel": "saigw/glm-5.2",
     "agentOverrides": {
-      "oracle": {
-        "model": "saigw/glm-5.2",
-        "fallbackModels": [
-          "saigw/kimi-k2.7-code",
-          "saigw/qwen3.7-max"
-        ],
-        "thinking": "high"
+      "scout": {
+        "model": "saigw/deepseek-v4-flash",
+        "fallbackModels": ["saigw/minimax-m3", "saigw/deepseek-v4-flash"],
+        "thinking": "low"
+      },
+      "researcher": {
+        "model": "saigw/deepseek-v4-flash",
+        "fallbackModels": ["saigw/minimax-m3", "saigw/deepseek-v4-flash"],
+        "thinking": "medium"
       },
       "planner": {
         "model": "saigw/glm-5.2",
-        "fallbackModels": [
-          "saigw/kimi-k2.7-code",
-          "saigw/qwen3.7-max"
-        ],
+        "fallbackModels": ["saigw/kimi-k2.7-code", "saigw/qwen3.7-max"],
         "thinking": "high"
       },
       "worker": {
         "model": "saigw/glm-5.2",
-        "fallbackModels": [
-          "saigw/kimi-k2.7-code",
-          "saigw/qwen3.7-max"
-        ],
+        "fallbackModels": ["saigw/kimi-k2.7-code", "saigw/qwen3.7-max"],
         "thinking": "medium",
         "acceptanceRole": "writer"
       },
       "reviewer": {
         "model": "saigw/deepseek-v4-flash",
-        "fallbackModels": [
-          "saigw/minimax-m3",
-          "saigw/deepseek-v4-flash"
-        ],
+        "fallbackModels": ["saigw/minimax-m3", "saigw/deepseek-v4-flash"],
         "thinking": "medium",
         "acceptanceRole": "read-only"
       },
-      "scout": {
-        "model": "saigw/deepseek-v4-flash",
-        "fallbackModels": [
-          "saigw/minimax-m3",
-          "saigw/deepseek-v4-flash"
-        ],
-        "thinking": "low"
-      },
       "context-builder": {
         "model": "saigw/deepseek-v4-flash",
-        "fallbackModels": [
-          "saigw/minimax-m3",
-          "saigw/deepseek-v4-flash"
-        ],
+        "fallbackModels": ["saigw/minimax-m3", "saigw/deepseek-v4-flash"],
         "thinking": "medium"
       },
-      "researcher": {
-        "model": "saigw/deepseek-v4-flash",
-        "fallbackModels": [
-          "saigw/minimax-m3",
-          "saigw/deepseek-v4-flash"
-        ],
-        "thinking": "medium"
+      "oracle": {
+        "model": "saigw/glm-5.2",
+        "fallbackModels": ["saigw/kimi-k2.7-code", "saigw/qwen3.7-max"],
+        "thinking": "high"
       },
       "delegate": {
         "model": "saigw/glm-5.2",
-        "fallbackModels": [
-          "saigw/kimi-k2.7-code",
-          "saigw/qwen3.7-max"
-        ]
-      },
-      "explore": {
-        "model": "saigw/deepseek-v4-flash",
-        "fallbackModels": [
-          "saigw/minimax-m3",
-          "saigw/deepseek-v4-flash"
-        ]
-      },
-      "librarian": {
-        "model": "saigw/deepseek-v4-flash",
-        "fallbackModels": [
-          "saigw/minimax-m3",
-          "saigw/deepseek-v4-flash"
-        ]
-      },
-      "metis": {
-        "model": "saigw/deepseek-v4-flash",
-        "fallbackModels": [
-          "saigw/minimax-m3",
-          "saigw/deepseek-v4-flash"
-        ]
-      },
-      "momus": {
-        "model": "saigw/deepseek-v4-flash",
-        "fallbackModels": [
-          "saigw/minimax-m3",
-          "saigw/deepseek-v4-flash"
-        ]
-      },
-      "hephaestus": {
-        "model": "saigw/glm-5.2",
-        "fallbackModels": [
-          "saigw/kimi-k2.7-code",
-          "saigw/qwen3.7-max"
-        ],
-        "thinking": "xhigh",
-        "acceptanceRole": "writer"
+        "fallbackModels": ["saigw/kimi-k2.7-code", "saigw/qwen3.7-max"]
       },
       "multimodal-looker": {
         "model": "saigw/kimi-k2.7-code",
-        "fallbackModels": [
-          "saigw/minimax-m3"
-        ]
+        "fallbackModels": ["saigw/minimax-m3"]
       }
     }
   },
   "hideThinkingBlock": false
 }
+
