@@ -1,0 +1,19 @@
+{
+  "_comment": "Copy to ~/.pi/agent/openai-service-tier.json (global) or .pi/openai-service-tier.json (project, trusted). Project deep-merges over global. An entry's PRESENCE marks a provider/model as service-tier-capable; model-level entries win over provider-level.",
+  "providers": {
+    "saigw-openai": {
+      "default": "priority",
+      "allowed": ["auto", "default", "flex", "priority"]
+    }
+  },
+  "models": {
+    "saigw-openai/gpt-5.6-sol": {
+      "default": "priority",
+      "allowed": ["priority", "flex"]
+    },
+    "saigw-openai/gpt-5.6-terra": {
+      "default": "priority",
+      "allowed": ["priority", "flex"]
+    }
+  }
+}
