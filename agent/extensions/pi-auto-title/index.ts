@@ -1,5 +1,5 @@
 /**
- * auto-title — automatic session titles for pi.
+ * pi-auto-title — automatic session titles for pi.
  *
  * - Generates a short title after the first Q&A exchange (default on).
  * - Regenerates the title after compaction, from the compaction summary (default on).
@@ -9,7 +9,7 @@
  *
  * Config files (JSON, project overrides global):
  *   <ext-dir>/config.json            (global, lives next to this extension)
- *   <cwd>/.pi/auto-title.json        (project, trusted only)
+ *   <cwd>/.pi/pi-auto-title.json        (project, trusted only)
  *   See config.example.json for a filled-in template.
  *
  * Config schema (all optional):
@@ -104,7 +104,7 @@ function loadConfig(ctx: ExtensionContext): AutoTitleConfig {
 
 	let merged: AutoTitleConfig = tryRead(join(EXT_DIR, "config.json")) ?? {};
 	if (ctx.isProjectTrusted()) {
-		const project = tryRead(join(ctx.cwd, CONFIG_DIR_NAME, "auto-title.json"));
+		const project = tryRead(join(ctx.cwd, CONFIG_DIR_NAME, "pi-auto-title.json"));
 		if (project) merged = { ...merged, ...project };
 	}
 	return merged;
@@ -149,9 +149,9 @@ export default function (pi: ExtensionAPI) {
 			if (idx > 0) {
 				const m = ctx.modelRegistry.find(cfg.model.slice(0, idx), cfg.model.slice(idx + 1));
 				if (m) return m;
-				notify(ctx, `auto-title: configured model "${cfg.model}" not found, falling back to current model`, "warning");
+				notify(ctx, `pi-auto-title: configured model "${cfg.model}" not found, falling back to current model`, "warning");
 			} else {
-				notify(ctx, `auto-title: invalid model "${cfg.model}", expected "provider/modelId"`, "warning");
+				notify(ctx, `pi-auto-title: invalid model "${cfg.model}", expected "provider/modelId"`, "warning");
 			}
 		}
 		return ctx.model;
@@ -161,17 +161,17 @@ export default function (pi: ExtensionAPI) {
 		const cfg = state.config;
 		const model = resolveModel(ctx, cfg);
 		if (!model) {
-			notify(ctx, "auto-title: no model available", "warning");
+			notify(ctx, "pi-auto-title: no model available", "warning");
 			return;
 		}
 
 		const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
 		if (!auth.ok) {
-			notify(ctx, `auto-title: auth failed: ${auth.error}`, "warning");
+			notify(ctx, `pi-auto-title: auth failed: ${auth.error}`, "warning");
 			return;
 		}
 		if (!auth.apiKey) {
-			notify(ctx, `auto-title: no api key for ${model.provider}/${model.id}`, "warning");
+			notify(ctx, `pi-auto-title: no api key for ${model.provider}/${model.id}`, "warning");
 			return;
 		}
 
@@ -210,13 +210,13 @@ export default function (pi: ExtensionAPI) {
 		);
 
 		if (!title) {
-			notify(ctx, "auto-title: model returned an empty title", "warning");
+			notify(ctx, "pi-auto-title: model returned an empty title", "warning");
 			return;
 		}
 
 		pi.setSessionName(title);
 		if (cfg.setTerminalTitle && ctx.hasUI) ctx.ui.setTitle(`pi - ${title}`);
-		notify(ctx, `auto-title (${source}): ${title}`, "info");
+		notify(ctx, `pi-auto-title (${source}): ${title}`, "info");
 	};
 
 	const runGenerate = async (ctx: ExtensionContext, source: GenSource, text: string) => {
@@ -226,7 +226,7 @@ export default function (pi: ExtensionAPI) {
 		try {
 			await generate(ctx, source, text);
 		} catch (err) {
-			notify(ctx, `auto-title: ${err instanceof Error ? err.message : String(err)}`, "error");
+			notify(ctx, `pi-auto-title: ${err instanceof Error ? err.message : String(err)}`, "error");
 		} finally {
 			state.generating = false;
 		}
@@ -286,12 +286,12 @@ export default function (pi: ExtensionAPI) {
 
 			if (sub === "off") {
 				state.enabled = false;
-				notify(ctx, "auto-title: disabled for this session", "info");
+				notify(ctx, "pi-auto-title: disabled for this session", "info");
 				return;
 			}
 			if (sub === "on") {
 				state.enabled = true;
-				notify(ctx, "auto-title: enabled", "info");
+				notify(ctx, "pi-auto-title: enabled", "info");
 				return;
 			}
 			if (sub === "status" || sub === "config") {
@@ -320,7 +320,7 @@ export default function (pi: ExtensionAPI) {
 			reloadConfig(ctx);
 			const text = buildConversationText(ctx);
 			if (!text.trim()) {
-				notify(ctx, "auto-title: no conversation to title yet", "warning");
+				notify(ctx, "pi-auto-title: no conversation to title yet", "warning");
 				return;
 			}
 			await runGenerate(ctx, "manual", text);

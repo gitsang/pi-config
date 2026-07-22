@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy to ~/.pi/agent/auto-title.json (global) or .pi/auto-title.json (project). Remove keys you don't need; all are optional.",
+  "_comment": "Copy to ~/.pi/agent/pi-auto-title.json (global) or .pi/pi-auto-title.json (project). Remove keys you don't need; all are optional.",
   "model": "saigw/glm-5.2",
   "onFirstTurn": true,
   "onCompact": true,

@@ -9,7 +9,7 @@
  * CROSS-EXTENSION (no coupling): an external extension "registers" a statusline
  * source by calling ctx.ui.setStatus(key, value). pi-statusline reads it via
  * the `ext-status` source with a `key` in config. pi-statusline imports NO
- * other extension. Example: openai-service-tier calls setStatus("service-tier",
+ * other extension. Example: pi-service-tier calls setStatus("service-tier",
  * "priority"); config references { source:"ext-status", key:"service-tier" }.
  *
  * CONFIG  (precedence: later overrides earlier)
