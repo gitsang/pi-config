@@ -2,7 +2,7 @@
   "lastChangelogVersion": "0.80.10",
   "theme": "dark",
   "defaultProvider": "saigw",
-  "defaultModel": "glm-5.2",
+  "defaultModel": "kimi-k3",
   "packages": [
     "npm:pi-subagents",
     "npm:pi-btw",
@@ -10,57 +10,82 @@
     "npm:@pi-plugins/checkpoint",
     "npm:@quintinshaw/pi-dynamic-workflows"
   ],
-  "defaultThinkingLevel": "high",
+  "defaultThinkingLevel": "low",
   "subagents": {
     "defaultModel": "saigw/glm-5.2",
     "agentOverrides": {
       "scout": {
         "model": "saigw/deepseek-v4-flash",
-        "fallbackModels": ["saigw/minimax-m3", "saigw/deepseek-v4-flash"],
+        "fallbackModels": [
+          "saigw/minimax-m3",
+          "saigw/deepseek-v4-flash"
+        ],
         "thinking": "low"
       },
       "researcher": {
         "model": "saigw/deepseek-v4-flash",
-        "fallbackModels": ["saigw/minimax-m3", "saigw/deepseek-v4-flash"],
+        "fallbackModels": [
+          "saigw/minimax-m3",
+          "saigw/deepseek-v4-flash"
+        ],
         "thinking": "medium"
       },
       "planner": {
         "model": "saigw/glm-5.2",
-        "fallbackModels": ["saigw/kimi-k2.7-code", "saigw/qwen3.7-max"],
+        "fallbackModels": [
+          "saigw/kimi-k2.7-code",
+          "saigw/qwen3.7-max"
+        ],
         "thinking": "high"
       },
       "worker": {
         "model": "saigw/glm-5.2",
-        "fallbackModels": ["saigw/kimi-k2.7-code", "saigw/qwen3.7-max"],
+        "fallbackModels": [
+          "saigw/kimi-k2.7-code",
+          "saigw/qwen3.7-max"
+        ],
         "thinking": "medium",
         "acceptanceRole": "writer"
       },
       "reviewer": {
         "model": "saigw/deepseek-v4-flash",
-        "fallbackModels": ["saigw/minimax-m3", "saigw/deepseek-v4-flash"],
+        "fallbackModels": [
+          "saigw/minimax-m3",
+          "saigw/deepseek-v4-flash"
+        ],
         "thinking": "medium",
         "acceptanceRole": "read-only"
       },
       "context-builder": {
         "model": "saigw/deepseek-v4-flash",
-        "fallbackModels": ["saigw/minimax-m3", "saigw/deepseek-v4-flash"],
+        "fallbackModels": [
+          "saigw/minimax-m3",
+          "saigw/deepseek-v4-flash"
+        ],
         "thinking": "medium"
       },
       "oracle": {
         "model": "saigw/glm-5.2",
-        "fallbackModels": ["saigw/kimi-k2.7-code", "saigw/qwen3.7-max"],
+        "fallbackModels": [
+          "saigw/kimi-k2.7-code",
+          "saigw/qwen3.7-max"
+        ],
         "thinking": "high"
       },
       "delegate": {
         "model": "saigw/glm-5.2",
-        "fallbackModels": ["saigw/kimi-k2.7-code", "saigw/qwen3.7-max"]
+        "fallbackModels": [
+          "saigw/kimi-k2.7-code",
+          "saigw/qwen3.7-max"
+        ]
       },
       "multimodal-looker": {
         "model": "saigw/kimi-k2.7-code",
-        "fallbackModels": ["saigw/minimax-m3"]
+        "fallbackModels": [
+          "saigw/minimax-m3"
+        ]
       }
     }
   },
   "hideThinkingBlock": false
 }
-
