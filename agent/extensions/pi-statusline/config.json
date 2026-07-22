@@ -35,6 +35,7 @@
     },
     "branch": {
       "source": "footer.branch",
+      "glyph": "\ue725",
       "color": "green"
     },
     "model": {
