@@ -63,7 +63,8 @@ function palette(name: string): string {
 	if (RGB_RE.test(name)) return name;
 	return P.fg;
 }
-const c = (rgb: string, s: string): string => (s === "" ? "" : `\x1b[38;2;${rgb}m${s}\x1b[0m`);
+let forceColor: string | null = null;
+const c = (rgb: string, s: string): string => (s === "" ? "" : `\x1b[38;2;${forceColor ?? rgb}m${s}\x1b[0m`);
 
 // ─── formatters ──────────────────────────────────────────────────────────────
 function fmtTok(n: number): string {
@@ -132,11 +133,18 @@ interface LineConfig {
 	sepRight?: string;
 }
 
+interface FocusConfig {
+	enabled: boolean;
+	dimUnfocused: boolean;
+	unfocusedColor: string;
+}
+
 interface RawConfig {
 	lines?: LineConfig[];
 	modules?: Record<string, ModuleConfig>;
 	separator?: { group?: string; item?: string; groupColor?: string };
 	priority?: Record<string, number>;
+	focus?: Partial<FocusConfig>;
 }
 
 interface StatuslineConfig {
@@ -144,6 +152,7 @@ interface StatuslineConfig {
 	modules: Record<string, ModuleConfig>;
 	separator: { group: string; item: string; groupColor: string };
 	priority: Record<string, number>;
+	focus: FocusConfig;
 }
 
 function isObj(v: unknown): v is Record<string, unknown> {
@@ -211,6 +220,7 @@ function mergeRaw(a: RawConfig, b: RawConfig): RawConfig {
 		modules: { ...(a.modules ?? {}), ...(b.modules ?? {}) },
 		separator: { ...(a.separator ?? {}), ...(b.separator ?? {}) },
 		priority: { ...(a.priority ?? {}), ...(b.priority ?? {}) },
+		focus: { ...(a.focus ?? {}), ...(b.focus ?? {}) },
 	};
 }
 
@@ -243,7 +253,13 @@ function loadConfig(ctx: ExtensionContext): StatuslineConfig {
 		groupColor: typeof sepRaw.groupColor === "string" ? sepRaw.groupColor : "dark5",
 	};
 	const priority = isObj(raw.priority) ? (raw.priority as any) : {};
-	return { lines, modules, separator, priority };
+	const fr = isObj(raw.focus) ? (raw.focus as Partial<FocusConfig>) : {};
+	const focus: FocusConfig = {
+		enabled: fr.enabled === true,
+		dimUnfocused: !!fr.dimUnfocused,
+		unfocusedColor: typeof fr.unfocusedColor === "string" ? fr.unfocusedColor : "comment",
+	};
+	return { lines, modules, separator, priority, focus };
 }
 
 // ─── source registry ────────────────────────────────────────────────────────
@@ -284,6 +300,7 @@ function fetchSource(source: string, sc: SourceContext, mc: ModuleConfig): any {
 		case "tps.avg": return sc.timingAvg.tps;
 		case "ext-status": return sc.footerData?.getExtensionStatuses?.()?.get(mc.key ?? "") ?? null;
 		case "literal": return mc.text ?? "";
+		case "focus": return focused ? "focused" : "unfocused";
 		default: return null;
 	}
 }
@@ -330,6 +347,9 @@ function renderModule(mc: ModuleConfig, sc: SourceContext): string {
 		if (mc.source === "ctx.bar") {
 			const pct = sc.ctxUsage?.percent ?? null;
 			return progressBar(pct, mc.cells ?? 8, resolveColor(mc.color, pct));
+		}
+		if (mc.source === "focus" && mc.glyph) {
+			return c(resolveColor(mc.color, focused ? "focused" : "unfocused"), mc.glyph);
 		}
 		const raw = fetchSource(mc.source, sc, mc);
 		const formatted = formatValue(mc.format, raw, mc.nullText);
@@ -464,22 +484,28 @@ function buildSourceContext(ctx: any, footerData: any): SourceContext {
 // ─── render ──────────────────────────────────────────────────────────────────
 let activeConfig: StatuslineConfig = {
 	lines: DEFAULT_RAW.lines!, modules: DEFAULT_RAW.modules!, separator: { group: "│", item: " ", groupColor: "dark5" }, priority: DEFAULT_RAW.priority!,
+	focus: { enabled: false, dimUnfocused: false, unfocusedColor: "comment" },
 };
 
 function renderFooter(ctx: any, footerData: any, width: number): string[] {
 	try {
 		const sc = buildSourceContext(ctx, footerData);
 		const cfg = activeConfig;
-		const groupSp = ` ${c(palette(cfg.separator.groupColor), cfg.separator.group)} `;
-		return cfg.lines.map((line) => {
-			const itemSp = line.sep ?? cfg.separator.item;
-			const leftSp = line.sepLeft ?? itemSp;
-			const rightSp = line.sepRight ?? itemSp;
-			if (line.full) {
-				return fitLine(buildItems(line.full, sc, cfg), width, itemSp, groupSp);
-			}
-			return splitLine(buildItems(line.left, sc, cfg), buildItems(line.right, sc, cfg), width, leftSp, rightSp, groupSp);
-		});
+		forceColor = !focused && cfg.focus.dimUnfocused ? palette(cfg.focus.unfocusedColor) : null;
+		try {
+			const groupSp = ` ${c(palette(cfg.separator.groupColor), cfg.separator.group)} `;
+			return cfg.lines.map((line) => {
+				const itemSp = line.sep ?? cfg.separator.item;
+				const leftSp = line.sepLeft ?? itemSp;
+				const rightSp = line.sepRight ?? itemSp;
+				if (line.full) {
+					return fitLine(buildItems(line.full, sc, cfg), width, itemSp, groupSp);
+				}
+				return splitLine(buildItems(line.left, sc, cfg), buildItems(line.right, sc, cfg), width, leftSp, rightSp, groupSp);
+			});
+		} finally {
+			forceColor = null;
+		}
 	} catch {
 		return ["".padEnd(width)];
 	}
@@ -489,12 +515,38 @@ function renderFooter(ctx: any, footerData: any, width: number): string[] {
 let enabled = false;
 let requestRender: (() => void) | undefined;
 
+// ─── focus tracking (DEC 1004 focus-in/out) ──────────────────────────────────
+// When enabled, writes ESC[?1004h so the terminal reports focus changes as
+// ESC[I (focused) / ESC[O (blurred). Lets the footer dim/recolor when its pane
+// loses focus — handy when several pi panes share one window.
+// NOTE: inside tmux, also set `set -g focus-events on` so pane switches report.
+let focused = true;
+
+function setupFocus(tui: any): (() => void) | null {
+	if (!activeConfig.focus.enabled || !tui?.addInputListener) return null;
+	const term = tui.terminal ?? process.stdout;
+	const write = (s: string) => { try { term.write(s); } catch { /* ignore */ } };
+	write("\x1b[?1004h");
+	const unsub = tui.addInputListener((data: string) => {
+		if (data === "\x1b[I" || data === "\x1b[O") {
+			const next = data === "\x1b[I";
+			if (next !== focused) { focused = next; requestRender?.(); }
+			return { consume: true };
+		}
+		return undefined;
+	});
+	const restore = () => { try { write("\x1b[?1004l"); } catch { /* ignore */ } unsub(); };
+	process.on("exit", restore);
+	return () => { process.off("exit", restore); restore(); };
+}
+
 function setupFooter(ctx: ExtensionContext): void {
 	ctx.ui.setFooter((tui: any, _theme: any, footerData: any) => {
 		requestRender = () => tui.requestRender();
 		const unsub = footerData.onBranchChange(() => tui.requestRender());
+		const teardownFocus = setupFocus(tui);
 		return {
-			dispose: () => { unsub(); requestRender = undefined; },
+			dispose: () => { unsub(); teardownFocus?.(); requestRender = undefined; },
 			invalidate() {},
 			render(width: number): string[] { return renderFooter(ctx, footerData, width); },
 		};
@@ -531,12 +583,19 @@ export default function (pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("statusline", {
-		description: "Toggle pi-statusline footer (| reload to reload config)",
+		description: "Toggle pi-statusline footer (| reload | focus)",
 		handler: async (args, ctx) => {
-			if (args.trim().toLowerCase() === "reload") {
+			const sub = args.trim().toLowerCase();
+			if (sub === "reload") {
 				activeConfig = loadConfig(ctx);
+				if (enabled && ctx.mode === "tui") setupFooter(ctx);
 				ctx.ui.notify("pi-statusline config reloaded", "info");
 				requestRender?.();
+				return;
+			}
+			if (sub === "focus") {
+				const tmux = process.env.TMUX ? " | tmux: needs 'set -g focus-events on'" : "";
+				ctx.ui.notify(`statusline focus: ${focused ? "focused" : "unfocused"} | tracking ${activeConfig.focus.enabled ? "on" : "off"}${tmux}`, "info");
 				return;
 			}
 			enabled = !enabled;

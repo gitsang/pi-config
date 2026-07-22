@@ -178,6 +178,11 @@
       "color": "orange"
     }
   },
+  "focus": {
+    "enabled": true,
+    "dimUnfocused": true,
+    "unfocusedColor": "comment"
+  },
   "separator": { "group": "│", "item": " ", "groupColor": "dark5" },
   "priority": {
     "cwd": 100,

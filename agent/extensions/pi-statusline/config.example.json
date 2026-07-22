@@ -1,8 +1,8 @@
 {
-  "_comment": "pi-statusline config. Precedence (later overrides earlier): global ~/.pi/agent/pi-statusline.json < extension ./config.json (this dir) < project <cwd>/.pi/pi-statusline.json (trusted). Partial configs deep-merge over the built-in default. Zero config = default 4-line footer. Sources: session.cwd|session.name, footer.branch, model.id, thinking, usage.input|output|cacheRead|cacheWrite|ch|cost, ctx.percent|tokens|window|nums|bar, ttft|ttft.avg, tps|tps.avg, ext-status (key), literal (text). color: 'name' | {map:{val->name},default} | {thresholds:[{op,n,color}],default}. Palette: fg fgDark comment dark5 blue cyan blue5 magenta purple orange yellow green green1 red, or raw 'R;G;B'. format: tok pct sec1 tps1 dollars3 int raw. Use /statusline reload after edits.",
+  "_comment": "pi-statusline config. Precedence (later overrides earlier): global ~/.pi/agent/pi-statusline.json < extension ./config.json (this dir) < project <cwd>/.pi/pi-statusline.json (trusted). Partial configs deep-merge over the built-in default. Zero config = default 4-line footer. Sources: session.cwd|session.name, footer.branch, model.id, thinking, usage.input|output|cacheRead|cacheWrite|ch|cost, ctx.percent|tokens|window|nums|bar, ttft|ttft.avg, tps|tps.avg, focus, ext-status (key), literal (text). color: 'name' | {map:{val->name},default} | {thresholds:[{op,n,color}],default}. Palette: fg fgDark comment dark5 blue cyan blue5 magenta purple orange yellow green green1 red, or raw 'R;G;B'. format: tok pct sec1 tps1 dollars3 int raw. Use /statusline reload after edits. FOCUS: {enabled, dimUnfocused, unfocusedColor} — tracks terminal focus via DEC 1004 (ESC[I/ESC[O); when dimUnfocused, the whole footer is recolored to unfocusedColor on blur so the focused pane stands out. The `focus` source returns 'focused'|'unfocused' for indicator modules (see focusDot). tmux users: add `set -g focus-events on` or pane switches won't report. /statusline focus shows current state.",
   "lines": [
     {
-      "left": ["title"],
+      "left": ["focusDot", "title"],
       "sepLeft": " ",
       "right": ["model", "thinking", "stier"],
       "sepRight": "  "
@@ -28,6 +28,11 @@
     "cwd": {
       "source": "session.cwd",
       "color": "fg"
+    },
+    "focusDot": {
+      "source": "focus",
+      "glyph": "●",
+      "color": { "map": { "focused": "green", "unfocused": "comment" }, "default": "fg" }
     },
     "title": {
       "source": "session.name",
@@ -160,9 +165,15 @@
       "color": "comment"
     }
   },
+  "focus": {
+    "enabled": true,
+    "dimUnfocused": false,
+    "unfocusedColor": "comment"
+  },
   "separator": { "group": "│", "item": " ", "groupColor": "dark5" },
   "priority": {
     "cwd": 100,
+    "focusDot": 110,
     "branch": 60,
     "title": 30,
     "model": 95,
