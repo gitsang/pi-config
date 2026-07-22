@@ -4,7 +4,7 @@
       "left": ["title"],
       "sepLeft": " ",
       "right": ["model", "thinking", "stier"],
-      "sepRight": "  "
+      "sepRight": " "
     },
     {
       "left": ["cwd"],
@@ -20,7 +20,7 @@
     },
     {
       "full": ["ttft", "tps"],
-      "sep": "  "
+      "sep": " "
     }
   ],
   "modules": {
