@@ -8,8 +8,9 @@
  * - Titles are shown in the TUI via pi.setSessionName() (session selector + header).
  *
  * Config files (JSON, project overrides global):
- *   <ext-dir>/auto-title.json        (global, lives next to this extension)
+ *   <ext-dir>/config.json            (global, lives next to this extension)
  *   <cwd>/.pi/auto-title.json        (project, trusted only)
+ *   See config.example.json for a filled-in template.
  *
  * Config schema (all optional):
  * {
@@ -101,7 +102,7 @@ function loadConfig(ctx: ExtensionContext): AutoTitleConfig {
 		}
 	};
 
-	let merged: AutoTitleConfig = tryRead(join(EXT_DIR, "auto-title.json")) ?? {};
+	let merged: AutoTitleConfig = tryRead(join(EXT_DIR, "config.json")) ?? {};
 	if (ctx.isProjectTrusted()) {
 		const project = tryRead(join(ctx.cwd, CONFIG_DIR_NAME, "auto-title.json"));
 		if (project) merged = { ...merged, ...project };
