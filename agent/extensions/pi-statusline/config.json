@@ -1,5 +1,4 @@
 {
-  "_comment": "pi-statusline config. Precedence (later overrides earlier): global ~/.pi/agent/pi-statusline.json < extension ./config.json (this dir) < project <cwd>/.pi/pi-statusline.json (trusted). Partial configs deep-merge over the built-in default. Zero config = default 4-line footer. Sources: session.cwd|session.name, footer.branch, model.id, thinking, usage.input|output|cacheRead|cacheWrite|ch|cost, ctx.percent|tokens|window|nums|bar, ttft|ttft.avg, tps|tps.avg, ext-status (key), literal (text). color: 'name' | {map:{val->name},default} | {thresholds:[{op,n,color}],default}. Palette: fg fgDark comment dark5 blue cyan blue5 magenta purple orange yellow green green1 red, or raw 'R;G;B'. format: tok pct sec1 tps1 dollars3 int raw. Use /statusline reload after edits.",
   "lines": [
     {
       "left": ["title"],
