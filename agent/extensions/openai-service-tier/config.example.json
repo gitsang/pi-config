@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy to ~/.pi/agent/openai-service-tier.json (global) or .pi/openai-service-tier.json (project, trusted). Project deep-merges over global. An entry's PRESENCE marks a provider/model as service-tier-capable; model-level entries win over provider-level.",
+  "_comment": "Config locations (precedence: later overrides earlier): global ~/.pi/agent/openai-service-tier.json < extension ./config.json (this file's dir) < project <cwd>/.pi/openai-service-tier.json (trusted). Copy this template to any of them. An entry's PRESENCE marks a provider/model as service-tier-capable; model-level entries win over provider-level.",
   "providers": {
     "saigw-openai": {
       "default": "priority",

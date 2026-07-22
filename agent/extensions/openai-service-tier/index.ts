@@ -15,9 +15,11 @@
  *   strictly opt-in: only providers/models listed in the config get injection.
  *
  * CONFIG
- *   Global:  <agent-home>/openai-service-tier.json   (e.g. ~/.pi/agent/)
- *   Project: <cwd>/.pi/openai-service-tier.json       (trusted projects only)
- *   Project config deep-merges over global config.
+ *   Global:     <agent-home>/openai-service-tier.json   (e.g. ~/.pi/agent/)
+ *   Extension:  <ext-dir>/config.json                    (next to this file)
+ *   Project:    <cwd>/.pi/openai-service-tier.json       (trusted projects only)
+ *   Precedence (later overrides earlier): global < extension < project.
+ *   See config.example.json for a filled-in template.
  *
  *   {
  *     "providers": {
@@ -248,7 +250,7 @@ function loadConfig(ctx: ExtensionContext): LoadResult {
 	// Extension-dir is a fallback for the "config lives with the extension"
 	// convention. Project (trusted only) overrides global.
 	let raw: ServiceTierConfig = readOne(join(getAgentDir(), "openai-service-tier.json"));
-	raw = deepMergeConfig(raw, readOne(join(EXT_DIR, "openai-service-tier.json")));
+	raw = deepMergeConfig(raw, readOne(join(EXT_DIR, "config.json")));
 	if (ctx.isProjectTrusted()) {
 		raw = deepMergeConfig(raw, readOne(join(ctx.cwd, CONFIG_DIR_NAME, "openai-service-tier.json")));
 	}
@@ -396,7 +398,7 @@ export default function (pi: ExtensionAPI) {
 		lines.push(`model: ${key}`);
 		if (!entry) {
 			lines.push("service-tier: NOT configured for this model.");
-			lines.push("  (add an entry under providers or models in openai-service-tier.json)");
+			lines.push("  (add an entry under providers or models in openai-service-tier.json or config.json)");
 			if (state.warnings.length > 0) {
 				lines.push("", "config warnings:");
 				for (const w of state.warnings) lines.push(`  - ${w}`);
@@ -518,7 +520,7 @@ export default function (pi: ExtensionAPI) {
 			if (cur.entry.allowed && !cur.entry.allowed.includes(tier)) {
 				notify(
 					ctx,
-					`service-tier: "${tier}" is not in the allowed list for ${modelKey(cur.provider, cur.id)}.\nAllowed: ${cur.entry.allowed.join(", ")}\n(Adjust "allowed" in openai-service-tier.json to permit it.)`,
+					`service-tier: "${tier}" is not in the allowed list for ${modelKey(cur.provider, cur.id)}.\nAllowed: ${cur.entry.allowed.join(", ")}\n(Adjust "allowed" in openai-service-tier.json / config.json to permit it.)`,
 					"warning",
 				);
 				return;
