@@ -2,8 +2,8 @@
   "lastChangelogVersion": "0.80.10",
   "theme": "dark",
   "defaultProvider": "saigw",
-  "defaultModel": "kimi-k3",
-  "defaultThinkingLevel": "off",
+  "defaultModel": "glm-5.2",
+  "defaultThinkingLevel": "max",
   "packages": [
     "npm:pi-subagents",
     "npm:pi-btw",
