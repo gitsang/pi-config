@@ -19,8 +19,10 @@
       "sepRight": " "
     },
     {
-      "full": ["ttft", "tps"],
-      "sep": " "
+      "left": ["ttft", "tps"],
+      "sepLeft": "  ",
+      "right": ["todayTok", "todayCost"],
+      "sepRight": " "
     }
   ],
   "modules": {
@@ -158,6 +160,22 @@
       "prefix": "(avg ",
       "suffix": ")",
       "color": "comment"
+    },
+    "todayTok": {
+      "source": "ext-status",
+      "key": "metrics-today-tokens",
+      "glyph": "\uf073",
+      "format": "tok",
+      "nullText": "",
+      "color": "cyan"
+    },
+    "todayCost": {
+      "source": "ext-status",
+      "key": "metrics-today-cost",
+      "glyph": "\uef8d",
+      "format": "dollars3",
+      "nullText": "",
+      "color": "orange"
     }
   },
   "separator": { "group": "│", "item": " ", "groupColor": "dark5" },
@@ -181,6 +199,8 @@
     "ttft": 100,
     "ttftAvg": 40,
     "tps": 95,
-    "tpsAvg": 30
+    "tpsAvg": 30,
+    "todayTok": 80,
+    "todayCost": 75
   }
 }
