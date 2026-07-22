@@ -1,4 +1,4 @@
-# ===== Secrets — never commit =====
+# ===== Secrets =====
 auth.json
 *.key
 *.pem
@@ -6,11 +6,8 @@ auth.json
 .env
 .env.*
 
-# ===== Session history (transient; may contain conversation/API data) =====
-sessions/
-
-# ===== Auto-managed binaries (re-downloaded by pi as needed) =====
-bin/
+# ===== Environment variables =====
+trust.json
 
 # ===== OS / editor noise =====
 .DS_Store
@@ -20,18 +17,15 @@ Thumbs.db
 *.swo
 *.log
 
-# ===== Checkpoint extension runtime (git worktree copies) =====
-checkpoints/
-
-# ===== Settings backups =====
-settings.json.bak.*
-
-# ===== Checkpoint extension shadow-git runtime (auto-managed) =====
-checkpoints/
+# ===== Binaries =====
+bin/
 
 # ===== Backup files =====
 *.bak.*
-settings.json.bak.*
+
+# ===== Runtime history =====
+checkpoints/
+sessions/
 
 # ===== Agents =====
 .worktrees
