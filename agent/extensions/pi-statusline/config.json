@@ -16,11 +16,11 @@
     {
       "left": ["tokIn", "tokOut", "cacheR", "cacheW", "cacheHit", "cost"],
       "sepLeft": "  ",
-      "right": ["ctxLabel", "ctxBar", "ctxPct", "ctxNums"],
+      "right": ["ctxBar", "ctxPct", "ctxNums"],
       "sepRight": " "
     },
     {
-      "full": ["ttft", "ttftAvg", "tps", "tpsAvg"],
+      "full": ["ttft", "tps"],
       "sep": "  "
     }
   ],
