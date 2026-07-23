@@ -15,10 +15,14 @@
  *   - installs the patched formats as WINDOW-LEVEL options on pi's window only
  *     (other windows keep using the global formats with the theme icon)
  *   - sets the per-window user option @pi_t = "<icon> " (icon + trailing space)
+ *   - disables per-window monitor-activity / monitor-bell on pi's window so the
+ *     theme's icon conditional (#{?window_activity_flag,󰁮,...#{@pi_t}}) always
+ *     falls through to #{@pi_t} instead of flipping to the activity glyph when
+ *     pi produces output in the background (other windows keep global monitoring)
  *   - tmux keeps managing #W (automatic-rename, manual rename, etc.) — the
  *     real window name is never touched
- *   - on exit, unset @pi_t and the window-level formats → tab reverts to the
- *     global theme format with its original terminal icon
+ *   - on exit, unset @pi_t, the window-level formats, and the monitor overrides
+ *     → tab reverts to the global theme format with its original terminal icon
  *
  * Focus tracking (zero polling):
  *   - enables DEC 1004 (ESC[?1004h); tmux forwards ESC[I/ESC[O when focus-events on
@@ -172,6 +176,27 @@ function unpatchFormats(): void {
 	tmux(["set-window-option", "-q", "-t", pane, "-u", "window-status-current-format"]);
 }
 
+// ─── activity/bell flag suppression ─────────────────────────────────────────
+// pi's window drives its own state icon (idle/busy/done), so tmux's automatic
+// activity/bell flags are redundant there — and worse, they take precedence in
+// the theme's icon conditional (#{?window_activity_flag,󰁮,...#{@pi_t}}). With
+// global `monitor-activity on`, switching away from pi makes any output
+// (spinner/statusline/generation) set window_activity_flag, flipping the tab
+// to the activity glyph 󰁮 and hiding #{@pi_t}. Disable per-window monitoring
+// so the conditional always falls through to #{@pi_t}; other windows keep the
+// global monitor-activity/monitor-bell behaviour.
+function suppressFlags(): void {
+	if (!active) return;
+	tmux(["set-window-option", "-t", pane, "monitor-activity", "off"]);
+	tmux(["set-window-option", "-t", pane, "monitor-bell", "off"]);
+}
+
+function restoreFlags(): void {
+	if (!pane) return;
+	tmux(["set-window-option", "-q", "-t", pane, "-u", "monitor-activity"]);
+	tmux(["set-window-option", "-q", "-t", pane, "-u", "monitor-bell"]);
+}
+
 // ─── DEC 1004 focus tracking (zero polling) ────────────────────────────────
 function enableFocusReporting(ctx: ExtensionContext): void {
 	if (unsubInput) return;
@@ -213,6 +238,7 @@ function activate(ctx: ExtensionContext): void {
 	active = cfg.enabled && inTmux && !!pane && ctx.mode === "tui";
 	if (!active) return;
 	patchFormats();
+	suppressFlags();
 	enableFocusReporting(ctx);
 	state = "idle";
 	lastT = "";
@@ -223,6 +249,7 @@ function shutdown(): void {
 	if (!active) return;
 	tmux(["set-window-option", "-q", "-t", pane, "-u", "@pi_t"]);
 	unpatchFormats();
+	restoreFlags();
 	disableFocusReporting();
 	active = false;
 }
