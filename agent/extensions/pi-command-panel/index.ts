@@ -282,44 +282,51 @@ class CommandPanel implements Component {
 
   render(width: number): string[] {
     const t = this.theme;
+    // Reserve 2 columns for the left/right border so content fits inside the box.
+    const innerWidth = Math.max(0, width - 2);
     const lines: string[] = [];
 
     // Title
     const title = t.fg("accent", t.bold(" Command Panel"));
     const hint = t.fg("dim", "  type to filter · ↑↓ select · ⏎ run · esc cancel");
-    lines.push(padToWidth(title + hint, width));
+    lines.push(padToWidth(title + hint, innerWidth));
 
     // Separator
-    lines.push(padToWidth(t.fg("border", "─".repeat(width)), width));
+    lines.push(padToWidth(t.fg("border", "─".repeat(innerWidth)), innerWidth));
 
     // Search line with cursor
     const prompt = t.fg("accent", "> ");
     const q = this.query.length > 0 ? t.fg("text", this.query) : "";
     const cursor = t.bg("selectedBg", " ");
-    lines.push(padToWidth(prompt + q + cursor, width));
+    lines.push(padToWidth(prompt + q + cursor, innerWidth));
 
     // List
     if (this.filtered.length === 0) {
-      lines.push(padToWidth(t.fg("warning", "  No matching commands"), width));
+      lines.push(padToWidth(t.fg("warning", "  No matching commands"), innerWidth));
     } else {
       const max = this.maxVisible;
       let start = this.selected - Math.floor(max / 2);
       start = Math.max(0, Math.min(start, Math.max(0, this.filtered.length - max)));
       const end = Math.min(start + max, this.filtered.length);
       for (let i = start; i < end; i++) {
-        lines.push(this.renderRow(this.filtered[i]!, i === this.selected, width));
+        lines.push(this.renderRow(this.filtered[i]!, i === this.selected, innerWidth));
       }
     }
 
     // Separator
-    lines.push(padToWidth(t.fg("border", "─".repeat(width)), width));
+    lines.push(padToWidth(t.fg("border", "─".repeat(innerWidth)), innerWidth));
 
     // Footer
     const count = `${this.filtered.length}/${this.items.length}`;
     const footer = t.fg("dim", ` ${count}   ⏎ run · esc cancel · ⌫ delete char · ctrl+u clear`);
-    lines.push(padToWidth(footer, width));
+    lines.push(padToWidth(footer, innerWidth));
 
-    return lines;
+    // Wrap the content in a box border (top/bottom rails + side walls).
+    const side = t.fg("border", "│");
+    const out: string[] = [t.fg("border", "┌" + "─".repeat(innerWidth) + "┐")];
+    for (const line of lines) out.push(side + line + side);
+    out.push(t.fg("border", "└" + "─".repeat(innerWidth) + "┘"));
+    return out;
   }
 
   invalidate(): void {
