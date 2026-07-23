@@ -2,7 +2,7 @@
   "enabled": true,
   "prefix": "\ue22c",
   "busy": "\uf110",
-  "done": "\uf00c",
+  "done": "\uf05d",
   "activeGlyph": "\ue795",
   "inactiveGlyph": "\uf489"
 }
