@@ -1,10 +1,10 @@
 /**
- * Command Palette Extension
+ * Command Panel Extension
  *
- * Opens a fuzzy-searchable command palette overlay anywhere in the editor via
+ * Opens a fuzzy-searchable command panel overlay anywhere in the editor via
  * Ctrl+P — no need to type `/<cmd>` at the start of the input.
  *
- * - Ctrl+P (main editor) ........... open palette
+ * - Ctrl+P (main editor) ........... open panel
  * - type ........................... fuzzy-filter across name + description
  * - ↑↓ ............................. navigate (also Ctrl+P / Ctrl+N)
  * - Enter .......................... run the selected command immediately
@@ -38,7 +38,7 @@ import {
 
 type CmdSource = "builtin" | "extension" | "prompt" | "skill";
 
-interface PaletteItem {
+interface PanelItem {
   /** Invocable name without leading slash, e.g. "model" or "skill:foo". */
   name: string;
   /** Short display label (without the skill: prefix for skills). */
@@ -48,7 +48,7 @@ interface PaletteItem {
 }
 
 /** Built-in interactive commands (not returned by pi.getCommands()). */
-const BUILTIN_COMMANDS: PaletteItem[] = [
+const BUILTIN_COMMANDS: PanelItem[] = [
   { name: "model", label: "model", description: "Switch models", source: "builtin" },
   { name: "scoped-models", label: "scoped-models", description: "Enable/disable models for Alt+M cycling", source: "builtin" },
   { name: "settings", label: "settings", description: "Thinking level, theme, message delivery, transport", source: "builtin" },
@@ -79,8 +79,8 @@ const NAVIGATING = new Set([
 ]);
 
 /** Build the full command list: built-ins first, then extension/prompt/skill. */
-function buildItems(pi: ExtensionAPI): PaletteItem[] {
-  const items: PaletteItem[] = BUILTIN_COMMANDS.map((c) => ({ ...c }));
+function buildItems(pi: ExtensionAPI): PanelItem[] {
+  const items: PanelItem[] = BUILTIN_COMMANDS.map((c) => ({ ...c }));
   const seen = new Set(items.map((i) => i.name));
 
   let dynamic: { name: string; description?: string; source: string }[] = [];
@@ -92,7 +92,7 @@ function buildItems(pi: ExtensionAPI): PaletteItem[] {
 
   for (const cmd of dynamic) {
     if (!cmd?.name) continue;
-    if (cmd.name === "palette") continue; // don't list ourselves
+    if (cmd.name === "panel") continue; // don't list ourselves
     if (seen.has(cmd.name)) continue;
     const source = (cmd.source as CmdSource) ?? "extension";
     const label = source === "skill" && cmd.name.startsWith("skill:")
@@ -146,7 +146,7 @@ interface TuiLike {
   requestRender: () => void;
 }
 
-interface PaletteCtx {
+interface PanelCtx {
   ui: {
     setEditorText: (s: string) => void;
     getEditorText: () => string;
@@ -164,24 +164,24 @@ interface PaletteCtx {
 }
 
 /**
- * The palette overlay component. Implements the pi-tui Component interface.
+ * The panel overlay component. Implements the pi-tui Component interface.
  * Render is computed fresh every frame (no caching) so selection changes
  * always reflect immediately.
  */
-class CommandPalette implements Component {
-  private items: PaletteItem[];
+class CommandPanel implements Component {
+  private items: PanelItem[];
   private theme: Theme;
   private tui: TuiLike;
   private done: (value: string | null) => void;
 
   private query = "";
-  private filtered: PaletteItem[];
+  private filtered: PanelItem[];
   private selected = 0;
   private readonly maxVisible = 10;
   private readonly nameCol: number;
 
   constructor(
-    items: PaletteItem[],
+    items: PanelItem[],
     theme: Theme,
     tui: TuiLike,
     done: (value: string | null) => void,
@@ -209,7 +209,7 @@ class CommandPalette implements Component {
   }
 
   handleInput(data: string): void {
-    // Navigation — arrows AND Ctrl+P/Ctrl+N (handy inside the palette)
+    // Navigation — arrows AND Ctrl+P/Ctrl+N (handy inside the panel)
     if (matchesKey(data, "up") || matchesKey(data, "ctrl+p")) {
       if (this.filtered.length > 0) {
         this.selected = (this.selected - 1 + this.filtered.length) % this.filtered.length;
@@ -257,7 +257,7 @@ class CommandPalette implements Component {
     this.tui.requestRender();
   }
 
-  private renderRow(item: PaletteItem, isSelected: boolean, width: number): string {
+  private renderRow(item: PanelItem, isSelected: boolean, width: number): string {
     const t = this.theme;
     const prefix = isSelected ? t.fg("accent", "▸ ") : "  ";
     const nameRaw = "/" + item.label;
@@ -285,7 +285,7 @@ class CommandPalette implements Component {
     const lines: string[] = [];
 
     // Title
-    const title = t.fg("accent", t.bold(" Command Palette"));
+    const title = t.fg("accent", t.bold(" Command Panel"));
     const hint = t.fg("dim", "  type to filter · ↑↓ select · ⏎ run · esc cancel");
     lines.push(padToWidth(title + hint, width));
 
@@ -341,7 +341,7 @@ function submitHint(): string {
  * handler (pi's unified command dispatcher). Runs immediately on Enter —
  * the command is never just filled into the editor.
  */
-async function runCommand(ctx: PaletteCtx, tui: TuiLike | null, item: PaletteItem): Promise<void> {
+async function runCommand(ctx: PanelCtx, tui: TuiLike | null, item: PanelItem): Promise<void> {
   // After the overlay closes, the TUI restores focus to the editor, so the
   // focused component is the editor instance. `focusedComponent` is private at
   // the type level but present at runtime.
@@ -378,36 +378,36 @@ async function runCommand(ctx: PaletteCtx, tui: TuiLike | null, item: PaletteIte
   }
 }
 
-export default function commandPaletteExtension(pi: ExtensionAPI): void {
-  // Also expose as /palette for discoverability (filtered out of the list).
-  pi.registerCommand("palette", {
-    description: "Open the command palette",
+export default function commandPanelExtension(pi: ExtensionAPI): void {
+  // Also expose as /panel for discoverability (filtered out of the list).
+  pi.registerCommand("panel", {
+    description: "Open the command panel",
     handler: async (_args, ctx) => {
-      await openPalette(pi, ctx);
+      await openPanel(pi, ctx);
     },
   });
 
   pi.registerShortcut("ctrl+p", {
-    description: "Open command palette",
+    description: "Open command panel",
     handler: async (ctx) => {
-      await openPalette(pi, ctx);
+      await openPanel(pi, ctx);
     },
   });
 }
 
-async function openPalette(pi: ExtensionAPI, ctx: PaletteCtx): Promise<void> {
+async function openPanel(pi: ExtensionAPI, ctx: PanelCtx): Promise<void> {
   const items = buildItems(pi);
   let capturedTui: TuiLike | null = null;
 
   const chosen = await ctx.ui.custom<string | null>(
     (tui, theme, _keybindings, done) => {
       capturedTui = tui;
-      const palette = new CommandPalette(items, theme, tui, done);
+      const panel = new CommandPanel(items, theme, tui, done);
       return {
-        render: (w: number) => palette.render(w),
-        invalidate: () => palette.invalidate(),
+        render: (w: number) => panel.render(w),
+        invalidate: () => panel.invalidate(),
         handleInput: (d: string) => {
-          palette.handleInput(d);
+          panel.handleInput(d);
         },
       };
     },
