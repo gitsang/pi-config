@@ -1,7 +1,9 @@
 {
-  "_comment": "pi-tmux-title config. Precedence (later overrides earlier): global ~/.pi/agent/pi-tmux-title.json < extension ./config.json (this dir) < project <cwd>/.pi/pi-tmux-title.json (trusted). Partial configs merge over the built-in defaults. Zero config = defaults below. Adds a state icon PREFIX before the tmux window's existing name (#W); never renames the window or touches automatic-rename. Mechanism: per-window user option @pi_t = '<icon> ' + idempotent global format patch (#W -> #{@pi_t}#W). States: idle=prefix, generating=busy, done=done-badge (only if pi lost focus when the turn finished; focus-in reverts to prefix). Focus via DEC 1004 (needs `set -g focus-events on` in tmux). No-op outside tmux / TUI mode. Use /tmux-title reload after edits.",
+  "_comment": "pi-tmux-title config. Precedence (later overrides earlier): global ~/.pi/agent/pi-tmux-title.json < extension ./config.json (this dir) < project <cwd>/.pi/pi-tmux-title.json (trusted). Partial configs merge over the built-in defaults. Zero config = defaults below. Replaces the tokyo-night theme terminal icon on pi's tmux window with a state-driven one, via a WINDOW-LEVEL window-status-format patch (other windows keep the global theme format). @pi_t = '<icon> ' (icon + trailing space). States: idle=prefix, generating=busy, done=done-badge (only if pi lost focus when the turn finished; focus-in reverts to prefix). Focus via DEC 1004 (needs `set -g focus-events on` in tmux). No-op outside tmux / TUI mode. activeGlyph/inactiveGlyph are the theme's baked-in terminal-icon glyphs to replace (defaults match tokyo-night: \\ue795 active, \\uf489 inactive). Use /tmux-title reload after edits.",
+  "enabled": true,
   "prefix": "\ue22c",
   "busy": "\uf110",
   "done": "\uf00c",
-  "enabled": true
+  "activeGlyph": "\ue795",
+  "inactiveGlyph": "\uf489"
 }
