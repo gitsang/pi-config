@@ -28,7 +28,8 @@
   "modules": {
     "cwd": {
       "source": "session.cwd",
-      "color": "fg"
+      "color": "fg",
+      "truncate": "start"
     },
     "title": {
       "source": "session.name",

@@ -104,6 +104,9 @@ function progressBar(pct: number | null, cells: number, color: string): string {
 	return `[${c(color, "█".repeat(filled))}${c(P.comment, "░".repeat(cells - filled))}]`;
 }
 
+// Shared grapheme segmenter for from-start truncation (paths are short; few calls).
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
 // ─── config types ────────────────────────────────────────────────────────────
 type ColorSpec =
 	| string
@@ -122,6 +125,7 @@ interface ModuleConfig {
 	cells?: number;      // ctx.bar
 	nullText?: string;   // shown when value is null/empty ("" => drop)
 	group?: number;
+	truncate?: "start" | "end";  // which side to ellipsis when truncated (default "end")
 }
 
 interface LineConfig {
@@ -172,7 +176,7 @@ const DEFAULT_RAW: RawConfig = {
 		{ full: ["ttft", "ttftAvg", "tps", "tpsAvg"], sep: "  " },
 	],
 	modules: {
-		cwd: { source: "session.cwd", color: "fg" },
+		cwd: { source: "session.cwd", color: "fg", truncate: "start" },
 		title: { source: "session.name", color: "comment" },
 		branch: { source: "footer.branch", color: "green" },
 		model: { source: "model.id", color: "blue" },
@@ -342,35 +346,61 @@ function formatValue(format: string | undefined, raw: any, nullText: string | un
 	}
 }
 
-function renderModule(mc: ModuleConfig, sc: SourceContext): string {
+function renderModule(mc: ModuleConfig, sc: SourceContext): { text: string; parts?: { glyphPart: string; plainBody: string; color: string } } {
 	try {
 		if (mc.source === "ctx.bar") {
 			const pct = sc.ctxUsage?.percent ?? null;
-			return progressBar(pct, mc.cells ?? 8, resolveColor(mc.color, pct));
+			return { text: progressBar(pct, mc.cells ?? 8, resolveColor(mc.color, pct)) };
 		}
 		if (mc.source === "focus" && mc.glyph) {
-			return c(resolveColor(mc.color, focused ? "focused" : "unfocused"), mc.glyph);
+			return { text: c(resolveColor(mc.color, focused ? "focused" : "unfocused"), mc.glyph) };
 		}
 		const raw = fetchSource(mc.source, sc, mc);
 		const formatted = formatValue(mc.format, raw, mc.nullText);
-		if (formatted === "") return "";
+		if (formatted === "") return { text: "" };
 		const body = `${mc.prefix ?? ""}${formatted}${mc.suffix ?? ""}`;
 		const color = resolveColor(mc.color, raw);
-		const glyph = mc.glyph ? `${c(color, mc.glyph)} ` : "";
-		return glyph + (body ? c(color, body) : "");
+		const glyphPart = mc.glyph ? `${c(color, mc.glyph)} ` : "";
+		const text = glyphPart + (body ? c(color, body) : "");
+		// Expose plain parts so the layout can ellipsis the *front* (keep the tail)
+		// when truncate === "start" — e.g. a long cwd shows "…/pi-statusline".
+		const parts = mc.truncate === "start" ? { glyphPart, plainBody: body, color } : undefined;
+		return { text, parts };
 	} catch {
-		return "";
+		return { text: "" };
 	}
 }
 
 // ─── layout items ───────────────────────────────────────────────────────────
-interface Item { key: string; pri: number; group: number; text: string }
+interface Item {
+	key: string;
+	pri: number;
+	group: number;
+	text: string;
+	// present when the module opts into truncate: "start"
+	truncateFromStart?: boolean;
+	plainBody?: string;
+	color?: string;
+	glyphPart?: string;
+}
 
 function buildItems(names: string[] | undefined, sc: SourceContext, cfg: StatuslineConfig): Item[] {
 	return (names ?? []).map((name) => {
 		const mc = cfg.modules[name];
-		const text = mc ? renderModule(mc, sc) : "";
-		return { key: name, pri: cfg.priority[name] ?? 50, group: mc?.group ?? 0, text };
+		const r = mc ? renderModule(mc, sc) : { text: "" };
+		const item: Item = {
+			key: name,
+			pri: cfg.priority[name] ?? 50,
+			group: mc?.group ?? 0,
+			text: r.text,
+		};
+		if (r.parts) {
+			item.truncateFromStart = true;
+			item.plainBody = r.parts.plainBody;
+			item.color = r.parts.color;
+			item.glyphPart = r.parts.glyphPart;
+		}
+		return item;
 	});
 }
 
@@ -388,6 +418,49 @@ function renderItems(items: Item[], kept: Set<string>, itemSp: string, groupSp: 
 function itemsWidth(items: Item[], kept: Set<string>, itemSp: string, groupSp: string): number {
 	return visibleWidth(renderItems(items, kept, itemSp, groupSp));
 }
+// Keep the visible tail of `plain` (≤ keepWidth columns), dropping leading graphemes.
+function takeTrailingByWidth(plain: string, keepWidth: number): string {
+	if (keepWidth <= 0 || !plain) return "";
+	let w = 0;
+	let out = "";
+	const graphs = [...graphemeSegmenter.segment(plain)].map((s) => s.segment);
+	for (let i = graphs.length - 1; i >= 0; i--) {
+		const g = graphs[i]!;
+		const gw = visibleWidth(g);
+		if (w + gw > keepWidth) break;
+		out = g + out;
+		w += gw;
+	}
+	return out;
+}
+
+// Truncate a single rendered item from the front: keep the glyph (if any) and a
+// tail of the body, prefixed by an ellipsis. A space follows the ellipsis so
+// the wide "…" glyph doesn't crowd the kept tail ("… /pi-statusline").
+// Preserves the module color (incl. focus-dim forceColor).
+function renderTruncatedFromStart(it: Item, maxWidth: number, ellipsis: string): string {
+	if (maxWidth <= 0) return "";
+	const glyphPart = it.glyphPart ?? "";
+	const glyphW = visibleWidth(glyphPart);
+	const avail = maxWidth - glyphW;
+	if (avail <= 0) return truncateToWidth(glyphPart, maxWidth, ellipsis);
+	const body = it.plainBody ?? "";
+	const color = it.color ?? P.fg;
+	if (visibleWidth(body) <= avail) return glyphPart + (body ? c(color, body) : "");
+	const prefix = `${ellipsis} `;
+	const pW = visibleWidth(prefix);
+	// Not enough room for the spaced ellipsis plus at least one tail char:
+	// fall back to a bare (clipped) ellipsis, matching the end-truncation path.
+	if (avail < pW + 1) return truncateToWidth(c(color, ellipsis), maxWidth, "");
+	return glyphPart + c(color, prefix + takeTrailingByWidth(body, avail - pW));
+}
+
+// Truncate a single item's text, honoring per-module truncate direction.
+function truncItemText(it: Item, maxWidth: number, ellipsis: string): string {
+	if (it.truncateFromStart && maxWidth > 0) return renderTruncatedFromStart(it, maxWidth, ellipsis);
+	return truncateToWidth(it.text, maxWidth, ellipsis);
+}
+
 function fitLine(items: Item[], width: number, itemSp: string, groupSp: string): string {
 	const live = items.filter((it) => visibleWidth(it.text) > 0);
 	const liveSet = new Set(live.map((it) => it.key));
@@ -397,6 +470,9 @@ function fitLine(items: Item[], width: number, itemSp: string, groupSp: string):
 	for (const it of droppable) {
 		kept.delete(it.key);
 		if (itemsWidth(live, kept, itemSp, groupSp) <= width) return renderItems(live, kept, itemSp, groupSp);
+	}
+	if (live.length === 1 && kept.has(live[0]!.key) && live[0]!.truncateFromStart) {
+		return renderTruncatedFromStart(live[0]!, width, "…");
 	}
 	return truncateToWidth(renderItems(live, kept, itemSp, groupSp), width);
 }
@@ -424,7 +500,7 @@ function splitLine(
 		const rw = visibleWidth(right);
 		const maxLeft = width - rw - 1;
 		if (maxLeft >= 4) {
-			const leftTrunc = truncateToWidth(renderItems(lLive, lAll, leftSp, groupSp), maxLeft, "…");
+			const leftTrunc = truncItemText(lLive[0]!, maxLeft, "…");
 			if (visibleWidth(leftTrunc) + 1 + rw <= width) {
 				return leftTrunc + " ".repeat(width - visibleWidth(leftTrunc) - rw) + right;
 			}
@@ -439,11 +515,14 @@ function splitLine(
 		const res = build(lKept, rKept);
 		if (res.ok) return res.line;
 	}
-	const left = renderItems(lLive, lKept, leftSp, groupSp);
 	const right = renderItems(rLive, rKept, rightSp, groupSp);
 	const rw = visibleWidth(right);
 	const gap = rw > 0 ? 1 : 0;
-	const leftTrunc = truncateToWidth(left, Math.max(0, width - rw - gap), "…");
+	const maxLeft = Math.max(0, width - rw - gap);
+	const leftSingle = lLive.length === 1 && lKept.has(lLive[0]!.key) ? lLive[0]! : null;
+	const leftTrunc = leftSingle
+		? truncItemText(leftSingle, maxLeft, "…")
+		: truncateToWidth(renderItems(lLive, lKept, leftSp, groupSp), maxLeft, "…");
 	return leftTrunc + " ".repeat(Math.max(0, width - visibleWidth(leftTrunc) - rw)) + right;
 }
 
