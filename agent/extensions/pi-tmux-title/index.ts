@@ -39,12 +39,6 @@
  *   global     ~/.pi/agent/pi-tmux-title.json
  *   extension  <ext-dir>/config.json        (next to this file)
  *   project    <cwd>/.pi/pi-tmux-title.json  (trusted projects only)
- *
- * Command:
- *   /tmux-title                       reload config
- *   /tmux-title on|off                enable / disable
- *   /tmux-title state idle|gen|done   force a state (manual / testing)
- *   /tmux-title status                show current state
  */
 
 import { spawnSync } from "node:child_process";
@@ -226,8 +220,6 @@ function restoreFlags(): void {
 
 // ─── lifecycle ──────────────────────────────────────────────────────────────
 function activate(ctx: ExtensionContext): void {
-	inTmux = !!process.env.TMUX;
-	pane = process.env.TMUX_PANE ?? "";
 	active = cfg.enabled && inTmux && !!pane && ctx.mode === "tui";
 	if (!active) return;
 	patchFormats();
@@ -270,64 +262,4 @@ export default function (pi: ExtensionAPI): void {
 	});
 
 	process.on("exit", shutdown);
-
-	pi.registerCommand("tmux-title", {
-		description: "tmux window tab title: [reload|on|off|state <s>|status]",
-		handler: async (args, ctx) => {
-			const parts = args.trim().split(/\s+/);
-			const sub = (parts[0] ?? "").toLowerCase();
-
-			if (sub === "off") {
-				shutdown();
-				cfg = { ...cfg, enabled: false };
-				if (ctx.hasUI) ctx.ui.notify("pi-tmux-title: disabled", "info");
-				return;
-			}
-			if (sub === "on") {
-				cfg = { ...cfg, enabled: true };
-				activate(ctx);
-				if (ctx.hasUI) ctx.ui.notify("pi-tmux-title: enabled", "info");
-				return;
-			}
-			if (sub === "state") {
-				const s = (parts[1] ?? "").toLowerCase();
-				if (s !== "idle" && s !== "gen" && s !== "done") {
-					if (ctx.hasUI) ctx.ui.notify("usage: /tmux-title state idle|gen|done", "warning");
-					return;
-				}
-				if (!active) {
-					cfg = { ...cfg, enabled: true };
-					activate(ctx);
-				}
-				setState(s);
-				if (ctx.hasUI) ctx.ui.notify(`pi-tmux-title: state → ${s}`, "info");
-				return;
-			}
-			if (sub === "status") {
-				if (ctx.hasUI) ctx.ui.notify(
-					[
-						`active: ${active}`,
-						`in tmux: ${inTmux} (pane ${pane || "—"})`,
-						`mode: ${ctx.mode}`,
-						`enabled: ${cfg.enabled}`,
-						`state: ${state}`,
-						`window active: ${active ? windowActive() : "—"}`, 
-						`prefix: ${cfg.prefix}`,
-						`busy: ${cfg.busy}`,
-						`done: ${cfg.done}`,
-						`active glyph: ${cfg.activeGlyph}`,
-						`inactive glyph: ${cfg.inactiveGlyph}`,
-						`last @pi_t: ${lastT || "(none)"}`,
-					].join("\n"),
-					"info",
-				);
-				return;
-			}
-
-			// default / "reload"
-			cfg = loadConfig(ctx);
-			activate(ctx);
-			if (ctx.hasUI) ctx.ui.notify("pi-tmux-title: config reloaded", "info");
-		},
-	});
 }
