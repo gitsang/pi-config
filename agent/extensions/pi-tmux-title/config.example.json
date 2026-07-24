@@ -5,6 +5,5 @@
   "busy": "\uf110",
   "done": "\uf00c",
   "activeGlyph": "\ue795",
-  "inactiveGlyph": "\uf489",
-  "pollMs": 1000
+  "inactiveGlyph": "\uf489"
 }

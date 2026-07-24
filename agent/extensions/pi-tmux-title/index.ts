@@ -63,8 +63,6 @@ interface TmuxTitleConfig {
 	/** Theme terminal-icon glyphs to replace with #{@pi_t}, active then inactive. */
 	activeGlyph?: string;
 	inactiveGlyph?: string;
-	/** Ms between window-active checks while in the "done" badge state. */
-	pollMs?: number;
 }
 
 const DEFAULTS: Required<TmuxTitleConfig> = {
@@ -74,7 +72,6 @@ const DEFAULTS: Required<TmuxTitleConfig> = {
 	enabled: true,
 	activeGlyph: "\ue795",    // tokyo-night @powerkit_active_window_icon default
 	inactiveGlyph: "\uf489",  // tokyo-night @powerkit_inactive_window_icon default
-	pollMs: 1000,
 };
 
 type ResolvedConfig = Required<TmuxTitleConfig>;
@@ -159,7 +156,7 @@ function updatePoll(): void {
 			return;
 		}
 		if (windowActive()) setState("idle");
-	}, cfg.pollMs);
+	}, 1000);
 }
 
 function setState(s: State): void {
