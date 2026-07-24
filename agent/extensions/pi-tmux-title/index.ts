@@ -6,7 +6,7 @@
  *
  *   idle (default):  prefix  (\ue22c by default)
  *   generating:      busy    (\uf110)
- *   done:            done    (\uf00c)  — only shown if pi lost focus mid-turn
+ *   done:            done    (\uf00c)  — badge if pi's window was inactive when the turn finished
  *
  * Mechanism (per-window, no global format change):
  *   - reads the *global* window-status-format / window-status-current-format
@@ -24,14 +24,16 @@
  *   - on exit, unset @pi_t, the window-level formats, and the monitor overrides
  *     → tab reverts to the global theme format with its original terminal icon
  *
- * Focus tracking (zero polling):
- *   - enables DEC 1004 (ESC[?1004h); tmux forwards ESC[I/ESC[O when focus-events on
- *   - focus-in while "done" → revert to "idle"; focus-out records blurred state
- *   - listener returns undefined (never consumes) so other extensions
- *     (e.g. pi-statusline's own DEC 1004) keep working alongside
+ * Focus tracking (tmux-internal — no terminal focus reporting required):
+ *   - done badge shown only if pi's window is inactive when the turn settles
+ *     (you were on another tmux window); if you were watching, it goes idle.
+ *   - while "done", polls #{window_active}; reverts to idle when you switch
+ *     back to pi's window.
+ *   - uses tmux's own window-active state, so it works over ssh and inside
+ *     nvim terminals where DEC 1004 (ESC[I/ESC[O) focus reporting is absent.
  *
  * No-op outside tmux or outside TUI mode. Active only for pi's own pane
- * ($TMUX_PANE). Requires `set -g focus-events on` for focus-based done-revert.
+ * ($TMUX_PANE).
  *
  * Config (precedence: later overrides earlier):
  *   global     ~/.pi/agent/pi-tmux-title.json
@@ -67,6 +69,8 @@ interface TmuxTitleConfig {
 	/** Theme terminal-icon glyphs to replace with #{@pi_t}, active then inactive. */
 	activeGlyph?: string;
 	inactiveGlyph?: string;
+	/** Ms between window-active checks while in the "done" badge state. */
+	pollMs?: number;
 }
 
 const DEFAULTS: Required<TmuxTitleConfig> = {
@@ -76,6 +80,7 @@ const DEFAULTS: Required<TmuxTitleConfig> = {
 	enabled: true,
 	activeGlyph: "\ue795",    // tokyo-night @powerkit_active_window_icon default
 	inactiveGlyph: "\uf489",  // tokyo-night @powerkit_inactive_window_icon default
+	pollMs: 1000,
 };
 
 type ResolvedConfig = Required<TmuxTitleConfig>;
@@ -106,13 +111,11 @@ type State = "idle" | "gen" | "done";
 
 let cfg: ResolvedConfig = { ...DEFAULTS };
 let state: State = "idle";
-let focused = true;
 let active = false;            // only true in tui mode inside tmux
 let inTmux = !!process.env.TMUX;
 let pane = process.env.TMUX_PANE ?? "";
 let lastT = "";                // last @pi_t value written (dedupe)
-let unsubInput: (() => void) | null = null;
-let warnedFocusEvents = false;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 // ─── tmux helpers (all sync; calls are ~ms and low-frequency) ───────────────
 function tmux(args: string[]): string {
@@ -133,6 +136,12 @@ function iconFor(s: State): string {
 	return s === "gen" ? cfg.busy : s === "done" ? cfg.done : cfg.prefix;
 }
 
+// Is pi's window currently the active window of its session? tmux-internal,
+// so it works regardless of terminal focus reporting (ssh, nvim, etc.).
+function windowActive(): boolean {
+	return tmux(["display-message", "-p", "-t", pane, "#{window_active}"]) === "1";
+}
+
 // Write the per-window user option @pi_t = "<icon> ". Dedupe by value.
 function writeMarker(icon: string): void {
 	if (!active) return;
@@ -142,9 +151,27 @@ function writeMarker(icon: string): void {
 	tmux(["set-window-option", "-t", pane, "@pi_t", t]);
 }
 
+// While showing the done badge, poll window-active so we revert to idle the
+// moment the user switches back to pi's window. Stopped otherwise.
+function updatePoll(): void {
+	if (pollTimer) {
+		clearInterval(pollTimer);
+		pollTimer = null;
+	}
+	if (!active || state !== "done") return;
+	pollTimer = setInterval(() => {
+		if (!active) {
+			if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+			return;
+		}
+		if (windowActive()) setState("idle");
+	}, cfg.pollMs);
+}
+
 function setState(s: State): void {
 	state = s;
 	writeMarker(iconFor(s));
+	updatePoll();
 }
 
 // ─── window-level format patching ───────────────────────────────────────────
@@ -197,40 +224,6 @@ function restoreFlags(): void {
 	tmux(["set-window-option", "-q", "-t", pane, "-u", "monitor-bell"]);
 }
 
-// ─── DEC 1004 focus tracking (zero polling) ────────────────────────────────
-function enableFocusReporting(ctx: ExtensionContext): void {
-	if (unsubInput) return;
-	// Check focus-events; warn once if off (tmux won't forward pane-switch events).
-	const fe = tmux(["show-options", "-gv", "focus-events"]);
-	if (fe !== "on" && !warnedFocusEvents) {
-		warnedFocusEvents = true;
-		ctx.ui.notify("pi-tmux-title: set `set -g focus-events on` for done-badge focus revert", "warning");
-	}
-	try {
-		process.stdout.write("\x1b[?1004h");
-	} catch { /* ignore */ }
-	if (ctx.ui.onTerminalInput) {
-		unsubInput = ctx.ui.onTerminalInput((data: string) => {
-			if (data === "\x1b[I") {
-				focused = true;
-				if (state === "done") setState("idle"); // focused back → drop badge
-			} else if (data === "\x1b[O") {
-				focused = false;
-			}
-			return undefined; // never consume; let pi-statusline etc. also see it
-		});
-	}
-}
-
-function disableFocusReporting(): void {
-	if (unsubInput) {
-		unsubInput();
-		unsubInput = null;
-	}
-	// Deliberately NOT writing ESC[?1004l on exit — keeps us decoupled from
-	// other extensions (e.g. pi-statusline) that may still rely on focus events.
-}
-
 // ─── lifecycle ──────────────────────────────────────────────────────────────
 function activate(ctx: ExtensionContext): void {
 	inTmux = !!process.env.TMUX;
@@ -239,18 +232,20 @@ function activate(ctx: ExtensionContext): void {
 	if (!active) return;
 	patchFormats();
 	suppressFlags();
-	enableFocusReporting(ctx);
 	state = "idle";
 	lastT = "";
 	writeMarker(cfg.prefix);
 }
 
 function shutdown(): void {
+	if (pollTimer) {
+		clearInterval(pollTimer);
+		pollTimer = null;
+	}
 	if (!active) return;
 	tmux(["set-window-option", "-q", "-t", pane, "-u", "@pi_t"]);
 	unpatchFormats();
 	restoreFlags();
-	disableFocusReporting();
 	active = false;
 }
 
@@ -269,9 +264,9 @@ export default function (pi: ExtensionAPI): void {
 	// The whole turn is truly finished (no more retries / compaction / follow-ups).
 	pi.on("agent_settled", () => {
 		if (!active) return;
-		// Done badge only if pi was blurred when it finished; if you were
-		// watching, go straight back to idle.
-		setState(focused ? "idle" : "done");
+		// Done badge only if pi's window was inactive when the turn finished
+		// (you were on another tmux window); if you were watching, go idle.
+		setState(windowActive() ? "idle" : "done");
 	});
 
 	process.on("exit", shutdown);
@@ -316,7 +311,7 @@ export default function (pi: ExtensionAPI): void {
 						`mode: ${ctx.mode}`,
 						`enabled: ${cfg.enabled}`,
 						`state: ${state}`,
-						`focused: ${focused}`,
+						`window active: ${active ? windowActive() : "—"}`, 
 						`prefix: ${cfg.prefix}`,
 						`busy: ${cfg.busy}`,
 						`done: ${cfg.done}`,
