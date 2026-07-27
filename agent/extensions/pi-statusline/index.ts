@@ -304,7 +304,7 @@ function fetchSource(source: string, sc: SourceContext, mc: ModuleConfig): any {
 		case "tps.avg": return sc.timingAvg.tps;
 		case "ext-status": return sc.footerData?.getExtensionStatuses?.()?.get(mc.key ?? "") ?? null;
 		case "literal": return mc.text ?? "";
-		case "focus": return focused ? "focused" : "unfocused";
+		case "focus": return focusState();
 		default: return null;
 	}
 }
@@ -353,7 +353,7 @@ function renderModule(mc: ModuleConfig, sc: SourceContext): { text: string; part
 			return { text: progressBar(pct, mc.cells ?? 8, resolveColor(mc.color, pct)) };
 		}
 		if (mc.source === "focus" && mc.glyph) {
-			return { text: c(resolveColor(mc.color, focused ? "focused" : "unfocused"), mc.glyph) };
+			return { text: c(resolveColor(mc.color, focusState()), mc.glyph) };
 		}
 		const raw = fetchSource(mc.source, sc, mc);
 		const formatted = formatValue(mc.format, raw, mc.nullText);
@@ -570,7 +570,9 @@ function renderFooter(ctx: any, footerData: any, width: number): string[] {
 	try {
 		const sc = buildSourceContext(ctx, footerData);
 		const cfg = activeConfig;
-		forceColor = !focused && cfg.focus.dimUnfocused ? palette(cfg.focus.unfocusedColor) : null;
+		forceColor = focusState() === "unfocused" && cfg.focus.dimUnfocused
+			? palette(cfg.focus.unfocusedColor)
+			: null;
 		try {
 			const groupSp = ` ${c(palette(cfg.separator.groupColor), cfg.separator.group)} `;
 			return cfg.lines.map((line) => {
@@ -594,14 +596,16 @@ function renderFooter(ctx: any, footerData: any, width: number): string[] {
 let enabled = false;
 let requestRender: (() => void) | undefined;
 
-// ─── focus tracking ──────────────────────────────────────────────────────────
-// DEC 1004 focus-in/out is owned by pi-status (one owner per terminal avoids
-// input-listener consume-order races). pi-status broadcasts focus on the
-// "pi-status:focus" event bus channel; we subscribe here so dimUnfocused and
-// the `focus` source keep working without enabling 1004 ourselves. Requires
-// pi-status; without it `focused` stays true. Inside tmux, pi-status needs
-// `set -g focus-events on`.
+// ─── focus subscription ─────────────────────────────────────────────────────
+// The standalone pi-focus extension is the sole DEC 1004 owner. This extension
+// only subscribes to its event bus channel, avoiding terminal-input races.
+const FOCUS_CHANNEL = "pi-focus:change";
 let focused = true;
+let focusSeen = false;
+
+function focusState(): "focused" | "unfocused" {
+	return !activeConfig.focus.enabled || focused ? "focused" : "unfocused";
+}
 
 function setupFooter(ctx: ExtensionContext): void {
 	ctx.ui.setFooter((tui: any, _theme: any, footerData: any) => {
@@ -616,9 +620,11 @@ function setupFooter(ctx: ExtensionContext): void {
 }
 
 export default function (pi: ExtensionAPI): void {
-	// Focus is owned by pi-status (DEC 1004); it broadcasts on "pi-status:focus".
-	pi.events.on("pi-status:focus", (v: unknown) => {
-		const next = v === true;
+	pi.events.on(FOCUS_CHANNEL, (data: unknown) => {
+		if (!data || typeof data !== "object") return;
+		const next = (data as { focused?: unknown }).focused;
+		if (typeof next !== "boolean") return;
+		focusSeen = true;
 		if (next !== focused) { focused = next; requestRender?.(); }
 	});
 
@@ -663,7 +669,10 @@ export default function (pi: ExtensionAPI): void {
 			}
 			if (sub === "focus") {
 				const tmux = process.env.TMUX ? " | tmux: needs 'set -g focus-events on'" : "";
-				ctx.ui.notify(`statusline focus: ${focused ? "focused" : "unfocused"} | via pi-status (DEC 1004)${tmux}`, "info");
+				const tracking = activeConfig.focus.enabled
+					? (focusSeen ? "event seen" : "waiting for event")
+					: "disabled";
+				ctx.ui.notify(`statusline focus: ${focusState()} | via pi-focus (${tracking})${tmux}`, "info");
 				return;
 			}
 			enabled = !enabled;

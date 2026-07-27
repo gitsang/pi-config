@@ -1,49 +1,23 @@
 /**
- * pi-status — mirror pi's generation state onto the tmux window tab AND the
- * pi-statusline footer, with DEC 1004 focus tracking driving the done→idle
- * revert.
+ * pi-status — mirror pi's generation state onto the tmux window tab and this
+ * pi instance's pi-statusline footer.
  *
- * Two independent surfaces, two activation scopes:
+ * tmux surface (TUI inside tmux): keeps the existing WINDOW-LEVEL @pi_t
+ * mechanism. Several pi panes in one tmux window intentionally overwrite each
+ * other (last writer wins).
  *
- * 1. tmux window tab  (active only inside tmux + TUI):
- *      Replaces the tokyo-night theme's terminal icon on pi's tmux window with
- *      a state-driven one via a WINDOW-LEVEL window-status-format patch (other
- *      windows keep the global theme format). @pi_t = "<icon> ".
- *        idle (default): prefix   generating: busy   done: done badge
- *      Multi-pane caveat: @pi_t is window-level, so several pi panes in one
- *      window overwrite each other (last writer wins). This is accepted by
- *      design — the per-pane disambiguation lives in surface #2.
+ * statusline surface (all TUI modes): pushes this pi's independent state via
+ * ctx.ui.setStatus(statusKey, "idle"|"gen"|"done").
  *
- * 2. pi-statusline registration  (active in ALL TUI mode, tmux or not):
- *      - Pushes THIS pi's gen state to its own footer via
- *        ctx.ui.setStatus(statusKey, "idle"|"gen"|"done"). Each pi process
- *        feeds its own footer, so every pane shows its own state (no sharing,
- *        no overwrite) — this is what disambiguates multi-pi setups.
- *      - Owns DEC 1004 focus tracking (ESC[?1004h → ESC[I focused / ESC[O
- *        blurred) for this terminal. On focus-in while in the "done" state,
- *        reverts to idle (done→prefix). Also broadcasts focus on the
- *        "pi-status:focus" event bus channel so pi-statusline's dimUnfocused /
- *        focusDot keep working without enabling 1004 itself (only one
- *        extension per terminal should own DEC 1004 — otherwise the shared
- *        input-listener consume-order races).
+ * Focus is supplied by the standalone pi-focus extension over the
+ * "pi-focus:change" event bus channel. pi-status never enables or consumes DEC
+ * 1004 itself. When a turn settles while unfocused it enters done; the next
+ * focus-in event reverts it to idle/prefix.
  *
- * Focus tracking uses DEC 1004 (terminal focus reporting), NOT tmux's
- * #{window_active}. This is per-pane precise, but requires the terminal to
- * support it. Inside tmux, enable `set -g focus-events on` or pane switches
- * won't report. (Same requirement the old pi-statusline focus feature had.)
+ * Config precedence:
+ *   ~/.pi/agent/pi-status.json < ./config.json < <cwd>/.pi/pi-status.json
  *
- * No-op outside TUI mode. The tmux surface is additionally no-op outside tmux.
- *
- * Config (precedence: later overrides earlier):
- *   global     ~/.pi/agent/pi-status.json
- *   extension  <ext-dir>/config.json        (next to this file)
- *   project    <cwd>/.pi/pi-status.json      (trusted projects only)
- *
- * Command:
- *   /pi-status                       reload config
- *   /pi-status on|off                enable / disable
- *   /pi-status state idle|gen|done   force a state (manual / testing)
- *   /pi-status status                show current state
+ * Command: /pi-status [reload|on|off|state idle|gen|done|status]
  */
 
 import { spawnSync } from "node:child_process";
@@ -59,8 +33,8 @@ import { fileURLToPath } from "node:url";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 
-/** Event bus channel pi-status broadcasts focus on (true=focused). */
-const FOCUS_CHANNEL = "pi-status:focus";
+/** Event bus channel emitted by the standalone pi-focus extension. */
+const FOCUS_CHANNEL = "pi-focus:change";
 
 // ─── config ─────────────────────────────────────────────────────────────────
 interface PiStatusConfig {
@@ -112,16 +86,15 @@ function loadConfig(ctx?: ExtensionContext): ResolvedConfig {
 type State = "idle" | "gen" | "done";
 
 let cfg: ResolvedConfig = { ...DEFAULTS };
-let api: ExtensionAPI | null = null;
 let ui: ExtensionContext["ui"] | null = null;
 let state: State = "idle";
-let focused = true;          // DEC 1004 focus (default: assume focused at startup)
-let statusActive = false;    // pi-statusline registration + DEC 1004 (TUI mode)
+let focused = true;          // supplied by pi-focus; assume focused until first event
+let focusSeen = false;
+let statusActive = false;    // pi-statusline registration (TUI mode)
 let tmuxActive = false;      // tmux window-tab patching (TUI + inside tmux)
 let inTmux = !!process.env.TMUX;
 let pane = process.env.TMUX_PANE ?? "";
 let lastT = "";              // last @pi_t value written (dedupe)
-let inputUnsub: (() => void) | null = null;
 
 // ─── tmux helpers (all sync; calls are ~ms and low-frequency) ───────────────
 function tmux(args: string[]): string {
@@ -190,26 +163,14 @@ function restoreFlags(): void {
 	tmux(["set-window-option", "-q", "-t", pane, "-u", "monitor-bell"]);
 }
 
-// ─── DEC 1004 focus tracking ────────────────────────────────────────────────
-function write1004(enable: boolean): void {
-	try { process.stdout.write(enable ? "\x1b[?1004h" : "\x1b[?1004l"); } catch { /* ignore */ }
-}
-
-function emitFocus(): void {
-	api?.events.emit(FOCUS_CHANNEL, focused);
-}
-
-// Raw terminal input: consume ESC[I / ESC[O, update focus, revert done→idle.
-function handleFocusInput(data: string): { consume: true } | undefined {
-	if (data === "\x1b[I") {
-		if (!focused) { focused = true; emitFocus(); if (state === "done") setState("idle"); }
-		return { consume: true };
-	}
-	if (data === "\x1b[O") {
-		if (focused) { focused = false; emitFocus(); }
-		return { consume: true };
-	}
-	return undefined;
+// ─── focus subscription ─────────────────────────────────────────────────────
+function handleFocusEvent(data: unknown): void {
+	if (!data || typeof data !== "object") return;
+	const next = (data as { focused?: unknown }).focused;
+	if (typeof next !== "boolean") return;
+	focusSeen = true;
+	focused = next;
+	if (focused && state === "done") setState("idle");
 }
 
 // ─── state transition ───────────────────────────────────────────────────────
@@ -233,12 +194,6 @@ function activate(ctx: ExtensionContext): void {
 	tmuxActive = statusActive && inTmux && !!pane;
 	if (!statusActive) return;
 
-	// DEC 1004 focus tracking (owned here; re-broadcast via event bus).
-	if (inputUnsub) { inputUnsub(); inputUnsub = null; }
-	write1004(true);
-	inputUnsub = ctx.ui.onTerminalInput(handleFocusInput);
-	emitFocus();  // broadcast initial assumed-focused state
-
 	// tmux window-tab patching.
 	if (tmuxActive) {
 		patchFormats();
@@ -252,8 +207,6 @@ function activate(ctx: ExtensionContext): void {
 }
 
 function shutdown(): void {
-	if (inputUnsub) { inputUnsub(); inputUnsub = null; }
-	write1004(false);
 	if (tmuxActive) {
 		tmux(["set-window-option", "-q", "-t", pane, "-u", "@pi_t"]);
 		unpatchFormats();
@@ -268,7 +221,7 @@ function shutdown(): void {
 
 // ─── setup ──────────────────────────────────────────────────────────────────
 export default function (pi: ExtensionAPI): void {
-	api = pi;
+	pi.events.on(FOCUS_CHANNEL, handleFocusEvent);
 
 	pi.on("session_start", (_e, ctx) => {
 		cfg = loadConfig(ctx);
@@ -283,13 +236,11 @@ export default function (pi: ExtensionAPI): void {
 	// The whole turn is truly finished (no more retries / compaction / follow-ups).
 	pi.on("agent_settled", () => {
 		if (!statusActive) return;
-		// Done badge only if pi's terminal was unfocused when the turn finished
-		// (you were looking elsewhere); if you were watching, go straight to idle.
-		// done→idle reverts on the next DEC 1004 focus-in (handleFocusInput).
+		// pi-focus supplies pane/terminal focus; focus-in later reverts done→idle.
 		setState(focused ? "idle" : "done");
 	});
 
-	process.on("exit", shutdown);
+	pi.on("session_shutdown", () => shutdown());
 
 	pi.registerCommand("pi-status", {
 		description: "pi status (tmux tab + statusline): [reload|on|off|state <s>|status]",
@@ -332,7 +283,8 @@ export default function (pi: ExtensionAPI): void {
 						`mode: ${ctx.mode}`,
 						`enabled: ${cfg.enabled}`,
 						`state: ${state}`,
-						`focused (DEC 1004): ${focused}`,
+						`focused (via pi-focus): ${focused}`,
+						`focus event seen: ${focusSeen}`,
 						`statusKey: ${cfg.statusKey}`,
 						`prefix: ${cfg.prefix}`,
 						`busy: ${cfg.busy}`,
