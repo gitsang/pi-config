@@ -594,38 +594,21 @@ function renderFooter(ctx: any, footerData: any, width: number): string[] {
 let enabled = false;
 let requestRender: (() => void) | undefined;
 
-// ─── focus tracking (DEC 1004 focus-in/out) ──────────────────────────────────
-// When enabled, writes ESC[?1004h so the terminal reports focus changes as
-// ESC[I (focused) / ESC[O (blurred). Lets the footer dim/recolor when its pane
-// loses focus — handy when several pi panes share one window.
-// NOTE: inside tmux, also set `set -g focus-events on` so pane switches report.
+// ─── focus tracking ──────────────────────────────────────────────────────────
+// DEC 1004 focus-in/out is owned by pi-status (one owner per terminal avoids
+// input-listener consume-order races). pi-status broadcasts focus on the
+// "pi-status:focus" event bus channel; we subscribe here so dimUnfocused and
+// the `focus` source keep working without enabling 1004 ourselves. Requires
+// pi-status; without it `focused` stays true. Inside tmux, pi-status needs
+// `set -g focus-events on`.
 let focused = true;
-
-function setupFocus(tui: any): (() => void) | null {
-	if (!activeConfig.focus.enabled || !tui?.addInputListener) return null;
-	const term = tui.terminal ?? process.stdout;
-	const write = (s: string) => { try { term.write(s); } catch { /* ignore */ } };
-	write("\x1b[?1004h");
-	const unsub = tui.addInputListener((data: string) => {
-		if (data === "\x1b[I" || data === "\x1b[O") {
-			const next = data === "\x1b[I";
-			if (next !== focused) { focused = next; requestRender?.(); }
-			return { consume: true };
-		}
-		return undefined;
-	});
-	const restore = () => { try { write("\x1b[?1004l"); } catch { /* ignore */ } unsub(); };
-	process.on("exit", restore);
-	return () => { process.off("exit", restore); restore(); };
-}
 
 function setupFooter(ctx: ExtensionContext): void {
 	ctx.ui.setFooter((tui: any, _theme: any, footerData: any) => {
 		requestRender = () => tui.requestRender();
 		const unsub = footerData.onBranchChange(() => tui.requestRender());
-		const teardownFocus = setupFocus(tui);
 		return {
-			dispose: () => { unsub(); teardownFocus?.(); requestRender = undefined; },
+			dispose: () => { unsub(); requestRender = undefined; },
 			invalidate() {},
 			render(width: number): string[] { return renderFooter(ctx, footerData, width); },
 		};
@@ -633,6 +616,12 @@ function setupFooter(ctx: ExtensionContext): void {
 }
 
 export default function (pi: ExtensionAPI): void {
+	// Focus is owned by pi-status (DEC 1004); it broadcasts on "pi-status:focus".
+	pi.events.on("pi-status:focus", (v: unknown) => {
+		const next = v === true;
+		if (next !== focused) { focused = next; requestRender?.(); }
+	});
+
 	pi.on("before_provider_request", () => { requestStart = Date.now(); });
 	pi.on("message_start", () => { msgStart = requestStart; firstToken = null; });
 	pi.on("message_update", (e: any) => {
@@ -674,7 +663,7 @@ export default function (pi: ExtensionAPI): void {
 			}
 			if (sub === "focus") {
 				const tmux = process.env.TMUX ? " | tmux: needs 'set -g focus-events on'" : "";
-				ctx.ui.notify(`statusline focus: ${focused ? "focused" : "unfocused"} | tracking ${activeConfig.focus.enabled ? "on" : "off"}${tmux}`, "info");
+				ctx.ui.notify(`statusline focus: ${focused ? "focused" : "unfocused"} | via pi-status (DEC 1004)${tmux}`, "info");
 				return;
 			}
 			enabled = !enabled;
