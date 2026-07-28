@@ -6,7 +6,7 @@
  * - / (start of main editor) ....... open panel
  * - type in the editor ............. fuzzy-filter across name + description
  * - ↑↓ ............................. navigate (also Ctrl+P / Ctrl+N)
- * - Tab ............................ complete `/<cmd> ` and keep panel open
+ * - Tab ............................ complete `/<cmd> ` and close panel
  * - Enter .......................... run the selected command immediately
  * - Esc / Ctrl+C ................... cancel and keep the editor text
  *
@@ -486,8 +486,7 @@ async function openPanel(pi: ExtensionAPI, ctx: PanelCtx): Promise<void> {
           close,
           (item) => {
             ctx.ui.setEditorText(`/${item.name} `);
-            panel.setQuery(ctx.ui.getEditorText());
-            tui.requestRender();
+            close(null);
           },
         );
 
