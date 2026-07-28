@@ -7,12 +7,12 @@
  * processes in that window, including several terminals inside one tmux pane.
  *
  * statusline surface (all TUI modes): pushes this pi's independent state via
- * ctx.ui.setStatus(statusKey, "idle"|"gen"|"done").
+ * ctx.ui.setStatus("pi-status", "idle"|"gen"|"done").
  *
  * Focus is supplied by the standalone pi-focus extension over the
  * "pi-focus:change" event bus channel. pi-status never enables or consumes DEC
  * 1004 itself. When a turn settles while unfocused it enters done; the next
- * focus-in event reverts it to idle/prefix.
+ * focus-in event reverts it to idle.
  *
  * Config precedence:
  *   ~/.pi/agent/pi-status.json < ./config.json < <cwd>/.pi/pi-status.json
@@ -43,35 +43,46 @@ const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 
 /** Event bus channel emitted by the standalone pi-focus extension. */
 const FOCUS_CHANNEL = "pi-focus:change";
+/** Fixed ext-status key exposed to pi-statusline. */
+const STATUS_KEY = "pi-status";
 
 /** One window option per Pi process; values also carry the current session ID. */
 const INSTANCE_OPTION_PREFIX = "@pi_status_instance_";
 const INSTANCE_OPTION = `${INSTANCE_OPTION_PREFIX}${process.pid}`;
 
 // ─── config ─────────────────────────────────────────────────────────────────
+interface TmuxGlyphConfig {
+	/** Theme terminal-icon glyphs to replace with #{@pi_t}. */
+	activeGlyph?: string;
+	inactiveGlyph?: string;
+}
+
 interface PiStatusConfig {
-	prefix?: string;   // idle / default icon
+	idle?: string;     // idle / default icon
 	busy?: string;     // generating icon
 	done?: string;     // done badge icon
 	enabled?: boolean;
-	/** Theme terminal-icon glyphs to replace with #{@pi_t}, active then inactive. */
-	activeGlyph?: string;
-	inactiveGlyph?: string;
-	/** ext-status key pushed to pi-statusline for this pi's gen state. */
-	statusKey?: string;
+	tmuxGlyph?: TmuxGlyphConfig;
 }
 
-const DEFAULTS: Required<PiStatusConfig> = {
-	prefix: "\ue22c",
+interface ResolvedConfig {
+	idle: string;
+	busy: string;
+	done: string;
+	enabled: boolean;
+	tmuxGlyph: Required<TmuxGlyphConfig>;
+}
+
+const DEFAULTS: ResolvedConfig = {
+	idle: "\ue22c",
 	busy: "\uf110",
 	done: "\uf00c",
 	enabled: true,
-	activeGlyph: "\ue795",    // tokyo-night @powerkit_active_window_icon default
-	inactiveGlyph: "\uf489",  // tokyo-night @powerkit_inactive_window_icon default
-	statusKey: "pi-status",
+	tmuxGlyph: {
+		activeGlyph: "\ue795",    // tokyo-night @powerkit_active_window_icon default
+		inactiveGlyph: "\uf489",  // tokyo-night @powerkit_inactive_window_icon default
+	},
 };
-
-type ResolvedConfig = Required<PiStatusConfig>;
 
 function tryRead(p: string): PiStatusConfig | null {
 	try {
@@ -84,14 +95,32 @@ function tryRead(p: string): PiStatusConfig | null {
 	}
 }
 
+function mergeConfig(base: PiStatusConfig, override: PiStatusConfig | null): PiStatusConfig {
+	if (!override) return base;
+	return {
+		...base,
+		...override,
+		tmuxGlyph: { ...base.tmuxGlyph, ...override.tmuxGlyph },
+	};
+}
+
 function loadConfig(ctx?: ExtensionContext): ResolvedConfig {
 	let raw: PiStatusConfig = {};
-	raw = { ...raw, ...(tryRead(join(getAgentDir(), "pi-status.json")) ?? {}) };
-	raw = { ...raw, ...(tryRead(join(EXT_DIR, "config.json")) ?? {}) };
+	raw = mergeConfig(raw, tryRead(join(getAgentDir(), "pi-status.json")));
+	raw = mergeConfig(raw, tryRead(join(EXT_DIR, "config.json")));
 	if (ctx?.isProjectTrusted()) {
-		raw = { ...raw, ...(tryRead(join(ctx.cwd, CONFIG_DIR_NAME, "pi-status.json")) ?? {}) };
+		raw = mergeConfig(raw, tryRead(join(ctx.cwd, CONFIG_DIR_NAME, "pi-status.json")));
 	}
-	return { ...DEFAULTS, ...raw };
+	return {
+		idle: raw.idle ?? DEFAULTS.idle,
+		busy: raw.busy ?? DEFAULTS.busy,
+		done: raw.done ?? DEFAULTS.done,
+		enabled: raw.enabled ?? DEFAULTS.enabled,
+		tmuxGlyph: {
+			activeGlyph: raw.tmuxGlyph?.activeGlyph ?? DEFAULTS.tmuxGlyph.activeGlyph,
+			inactiveGlyph: raw.tmuxGlyph?.inactiveGlyph ?? DEFAULTS.tmuxGlyph.inactiveGlyph,
+		},
+	};
 }
 
 // ─── state ──────────────────────────────────────────────────────────────────
@@ -205,7 +234,7 @@ function patchFormats(): void {
 		if (!g) continue;
 		let patchedFmt = g;
 		let changed = false;
-		for (const glyph of [cfg.activeGlyph, cfg.inactiveGlyph]) {
+		for (const glyph of [cfg.tmuxGlyph.activeGlyph, cfg.tmuxGlyph.inactiveGlyph]) {
 			if (glyph && patchedFmt.includes(glyph)) {
 				patchedFmt = patchedFmt.split(glyph).join("#{@pi_t}");
 				changed = true;
@@ -249,7 +278,7 @@ function handleFocusEvent(data: unknown): void {
 // ─── state transition ───────────────────────────────────────────────────────
 function pushStatus(): void {
 	if (!statusActive || !ui) return;
-	try { ui.setStatus(cfg.statusKey, state); } catch { /* ignore */ }
+	try { ui.setStatus(STATUS_KEY, state); } catch { /* ignore */ }
 }
 
 function setState(s: State): void {
@@ -294,7 +323,7 @@ function shutdown(): void {
 		}
 	}
 	if (statusActive && ui) {
-		try { ui.setStatus(cfg.statusKey, undefined); } catch { /* ignore */ }
+		try { ui.setStatus(STATUS_KEY, undefined); } catch { /* ignore */ }
 	}
 	statusActive = false;
 	tmuxActive = false;
@@ -374,12 +403,12 @@ export default function (pi: ExtensionAPI): void {
 						`window instances: ${instances.map((instance) => `${instance.pid}/${instance.sessionId}/${instance.state}`).join(", ") || "(none)"}`,
 						`focused (via pi-focus): ${focused}`,
 						`focus event seen: ${focusSeen}`,
-						`statusKey: ${cfg.statusKey}`,
-						`prefix: ${cfg.prefix}`,
+						`status key: ${STATUS_KEY} (fixed)`,
+						`idle: ${cfg.idle}`,
 						`busy: ${cfg.busy}`,
 						`done: ${cfg.done}`,
-						`active glyph: ${cfg.activeGlyph}`,
-						`inactive glyph: ${cfg.inactiveGlyph}`,
+						`active glyph: ${cfg.tmuxGlyph.activeGlyph}`,
+						`inactive glyph: ${cfg.tmuxGlyph.inactiveGlyph}`,
 						`last @pi_t written here: ${lastT || "(none)"}`,
 					].join("\n"),
 					"info",

@@ -8,11 +8,11 @@ import {
 	type MarkerGlyphs,
 } from "./aggregate.ts";
 
-const glyphs: MarkerGlyphs = { prefix: "P", busy: "B", done: "D" };
+const glyphs: MarkerGlyphs = { idle: "I", busy: "B", done: "D" };
 
-test("shows one prefix when every Pi process is idle", () => {
-	assert.equal(formatAggregateMarker(["idle"], glyphs), "P");
-	assert.equal(formatAggregateMarker(["idle", "idle", "idle"], glyphs), "P");
+test("shows one idle glyph when every Pi process is idle", () => {
+	assert.equal(formatAggregateMarker(["idle"], glyphs), "I");
+	assert.equal(formatAggregateMarker(["idle", "idle", "idle"], glyphs), "I");
 });
 
 test("shows only non-zero active state counts", () => {

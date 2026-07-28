@@ -1,9 +1,10 @@
 {
   "enabled": true,
-  "prefix": "\ue22c",
+  "idle": "\ue22c",
   "busy": "\uf110",
   "done": "\uf05d",
-  "activeGlyph": "\ue795",
-  "inactiveGlyph": "\uf489",
-  "statusKey": "pi-status"
+  "tmuxGlyph": {
+    "activeGlyph": "\ue795",
+    "inactiveGlyph": "\uf489"
+  }
 }

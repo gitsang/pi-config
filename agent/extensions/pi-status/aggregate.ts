@@ -7,7 +7,7 @@ export interface InstanceRecord {
 }
 
 export interface MarkerGlyphs {
-	prefix: string;
+	idle: string;
 	busy: string;
 	done: string;
 }
@@ -39,7 +39,7 @@ export function formatAggregateMarker(
 ): string | null {
 	if (states.length === 0) return null;
 	const counts = countStates(states);
-	if (counts.gen === 0 && counts.done === 0) return glyphs.prefix;
+	if (counts.gen === 0 && counts.done === 0) return glyphs.idle;
 
 	let marker = "";
 	if (counts.gen > 0) marker += `${glyphs.busy} ${superscriptCount(counts.gen)}`;

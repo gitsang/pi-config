@@ -203,7 +203,7 @@ ships the full template.
 | **pi-auto-title** | Auto-generates short session titles after the first Q&A, regenerates after compaction, and refreshes every 25 turns (current config). `/auto-title` regen/off/on/status. |
 | **pi-model-lock** | Prevents in-session model/thinking switches from overwriting the global `defaultModel`/`defaultProvider`/`defaultThinkingLevel` in `settings.json` (restores the snapshot taken at session start). `enable: true`. `/model-lock` status, `/model-save` persists current as new default. |
 | **pi-service-tier** | Injects OpenAI `service_tier` into request payloads (models.json has no field for it). Current config marks `saigw-openai` as tier-capable, defaulting to `priority` with `auto/default/flex/priority` allowed. |
-| **pi-status** | Mirrors Pi state onto the tmux window tab and each Pi footer. The tmux marker aggregates processes by PID across the whole window (including multiple terminals in one pane): all idle → one prefix; otherwise non-zero generating/done states → icon plus superscript count. |
+| **pi-status** | Mirrors Pi state onto the tmux window tab and each Pi footer. The tmux marker aggregates processes by PID across the whole window (including multiple terminals in one pane): all idle → one idle glyph; otherwise non-zero generating/done states → icon plus superscript count. |
 
 ### How they fit together
 
