@@ -5,11 +5,11 @@
  * need to type `/<cmd>` at the start of the input.
  *
  * - Ctrl+P (main editor) ........... open panel
- * - type ........................... fuzzy-filter across name + description
+ * - type in the editor ............. fuzzy-filter across name + description
  * - ↑↓ ............................. navigate (also Ctrl+P / Ctrl+N)
- * - Tab ............................ complete `/<cmd> ` into the editor
+ * - Tab ............................ complete `/<cmd> ` and keep panel open
  * - Enter .......................... run the selected command immediately
- * - Esc / Ctrl+C ................... cancel
+ * - Esc / Ctrl+C ................... cancel and restore the draft
  *
  * How commands run (Enter executes directly, never just fills the editor):
  *   Every selection is dispatched through the editor's `onSubmit` handler, which
@@ -32,6 +32,7 @@ import { keyText, type Theme } from "@earendil-works/pi-coding-agent";
 import {
   type Component,
   fuzzyFilter,
+  getKeybindings,
   matchesKey,
   truncateToWidth,
   visibleWidth,
@@ -48,10 +49,7 @@ interface PanelItem {
   source: CmdSource;
 }
 
-type PanelAction =
-  | { kind: "run"; name: string }
-  | { kind: "complete"; name: string }
-  | null;
+type PanelAction = { name: string; commandText: string } | null;
 
 /** Built-in interactive commands (not returned by pi.getCommands()). */
 const BUILTIN_COMMANDS: PanelItem[] = [
@@ -151,6 +149,16 @@ function padToWidth(str: string, width: number): string {
 interface TuiLike {
   requestRender: () => void;
   setFocus: (component: Component | null) => void;
+  addInputListener: (
+    listener: (data: string) => { consume?: boolean; data?: string } | undefined,
+  ) => () => void;
+}
+
+interface EditorLike extends Component {
+  getText: () => string;
+  setText: (text: string) => void;
+  isShowingAutocomplete: () => boolean;
+  onSubmit?: (text: string) => void | Promise<void>;
 }
 
 interface PanelCtx {
@@ -175,10 +183,11 @@ class CommandPanel implements Component {
   private items: PanelItem[];
   private theme: Theme;
   private tui: TuiLike;
-  private done: (value: PanelAction) => void;
+  private done: (item: PanelItem | null) => void;
+  private complete: (item: PanelItem) => void;
 
-  private query = "";
   private filtered: PanelItem[];
+  private filterQuery = "";
   private selected = 0;
   private readonly maxVisible = 10;
   private readonly nameCol: number;
@@ -187,13 +196,16 @@ class CommandPanel implements Component {
     items: PanelItem[],
     theme: Theme,
     tui: TuiLike,
-    done: (value: PanelAction) => void,
+    done: (item: PanelItem | null) => void,
+    complete: (item: PanelItem) => void,
   ) {
     this.items = items;
     this.theme = theme;
     this.tui = tui;
     this.done = done;
-    this.filtered = items;
+    this.complete = complete;
+    this.filtered = [...items].reverse();
+    this.selected = Math.max(0, this.filtered.length - 1);
 
     let maxName = 8;
     for (const it of items) {
@@ -203,67 +215,60 @@ class CommandPanel implements Component {
     this.nameCol = Math.min(maxName, 26);
   }
 
-  private refilter(): void {
-    const q = this.query;
-    this.filtered = q.trim()
-      ? fuzzyFilter(this.items, q, (it) => `${it.label} ${it.name} ${it.description}`)
-      : this.items;
-    this.selected = 0;
+  setQuery(query: string): void {
+    const trimmed = query.trimStart();
+    const commandMatch = trimmed.match(/^\/([^\s]*)/);
+    const filterQuery = (commandMatch ? commandMatch[1]! : trimmed).trim();
+    if (filterQuery === this.filterQuery) return;
+
+    this.filterQuery = filterQuery;
+    const ranked = filterQuery
+      ? fuzzyFilter(this.items, filterQuery, (it) => `${it.label} ${it.name} ${it.description}`)
+      : [...this.items];
+    this.filtered = ranked.reverse();
+    this.selected = Math.max(0, this.filtered.length - 1);
   }
 
-  handleInput(data: string): void {
-    // Navigation — arrows AND Ctrl+P/Ctrl+N (handy inside the panel)
-    if (matchesKey(data, "up") || matchesKey(data, "ctrl+p")) {
+  handlePanelInput(data: string): boolean {
+    const kb = getKeybindings();
+
+    // Follow pi's selection bindings, with Ctrl+P/Ctrl+N as panel extras.
+    if (kb.matches(data, "tui.select.up") || matchesKey(data, "ctrl+p")) {
       if (this.filtered.length > 0) {
         this.selected = (this.selected - 1 + this.filtered.length) % this.filtered.length;
       }
-    } else if (matchesKey(data, "down") || matchesKey(data, "ctrl+n")) {
+    } else if (kb.matches(data, "tui.select.down") || matchesKey(data, "ctrl+n")) {
       if (this.filtered.length > 0) {
         this.selected = (this.selected + 1) % this.filtered.length;
       }
-    } else if (matchesKey(data, "pageUp")) {
+    } else if (kb.matches(data, "tui.select.pageUp")) {
       this.selected = Math.max(0, this.selected - this.maxVisible);
-    } else if (matchesKey(data, "pageDown")) {
+    } else if (kb.matches(data, "tui.select.pageDown")) {
       this.selected = Math.min(
         Math.max(0, this.filtered.length - 1),
         this.selected + this.maxVisible,
       );
-    } else if (matchesKey(data, "home")) {
-      this.selected = 0;
-    } else if (matchesKey(data, "end")) {
-      this.selected = Math.max(0, this.filtered.length - 1);
-    } else if (matchesKey(data, "enter") || matchesKey(data, "return")) {
+    } else if (kb.matches(data, "tui.select.confirm")) {
       const item = this.filtered[this.selected];
       if (item) {
-        this.done({ kind: "run", name: item.name });
-        return;
+        this.done(item);
+        return true;
       }
-    } else if (matchesKey(data, "tab")) {
+    } else if (kb.matches(data, "tui.input.tab")) {
       const item = this.filtered[this.selected];
       if (item) {
-        this.done({ kind: "complete", name: item.name });
-        return;
+        this.complete(item);
+        return true;
       }
-    } else if (matchesKey(data, "escape") || matchesKey(data, "esc") || matchesKey(data, "ctrl+c")) {
+    } else if (kb.matches(data, "tui.select.cancel")) {
       this.done(null);
-      return;
-    } else if (matchesKey(data, "backspace")) {
-      if (this.query.length > 0) {
-        this.query = this.query.slice(0, -1);
-        this.refilter();
-      }
-    } else if (matchesKey(data, "ctrl+u")) {
-      this.query = "";
-      this.refilter();
+      return true;
     } else {
-      // Printable character → append to query
-      const code = data.charCodeAt(0);
-      if (data.length >= 1 && code >= 32 && code !== 127) {
-        this.query += data;
-        this.refilter();
-      }
+      return false;
     }
+
     this.tui.requestRender();
+    return true;
   }
 
   private renderRow(item: PanelItem, isSelected: boolean, width: number): string {
@@ -291,51 +296,30 @@ class CommandPanel implements Component {
 
   render(width: number): string[] {
     const t = this.theme;
-    // Reserve 2 columns for the left/right border so content fits inside the box.
-    const innerWidth = Math.max(0, width - 2);
     const lines: string[] = [];
+    const count = `${this.filtered.length}/${this.items.length}`;
+    const completeKey = keyText("tui.input.tab") || "tab";
 
-    // Title
+    // Keep all panel metadata in the header; the list has no side or bottom frame.
     const title = t.fg("accent", t.bold(" Command Panel"));
-    const hint = t.fg("dim", "  type to filter · ↑↓ select · tab complete · ⏎ run · esc cancel");
-    lines.push(padToWidth(title + hint, innerWidth));
+    const hint = t.fg("dim", `  ${count}   ${completeKey} complete · ⏎ run · esc cancel`);
+    lines.push(t.fg("border", "─".repeat(width)));
+    lines.push(padToWidth(title + hint, width));
+    lines.push(t.fg("border", "─".repeat(width)));
 
-    // Separator
-    lines.push(padToWidth(t.fg("border", "─".repeat(innerWidth)), innerWidth));
-
-    // Search line with cursor
-    const prompt = t.fg("accent", "> ");
-    const q = this.query.length > 0 ? t.fg("text", this.query) : "";
-    const cursor = t.bg("selectedBg", " ");
-    lines.push(padToWidth(prompt + q + cursor, innerWidth));
-
-    // List
     if (this.filtered.length === 0) {
-      lines.push(padToWidth(t.fg("warning", "  No matching commands"), innerWidth));
+      lines.push(padToWidth(t.fg("warning", "  No matching commands"), width));
     } else {
       const max = this.maxVisible;
       let start = this.selected - Math.floor(max / 2);
       start = Math.max(0, Math.min(start, Math.max(0, this.filtered.length - max)));
       const end = Math.min(start + max, this.filtered.length);
       for (let i = start; i < end; i++) {
-        lines.push(this.renderRow(this.filtered[i]!, i === this.selected, innerWidth));
+        lines.push(this.renderRow(this.filtered[i]!, i === this.selected, width));
       }
     }
 
-    // Separator
-    lines.push(padToWidth(t.fg("border", "─".repeat(innerWidth)), innerWidth));
-
-    // Footer
-    const count = `${this.filtered.length}/${this.items.length}`;
-    const footer = t.fg("dim", ` ${count}   tab complete · ⏎ run · esc cancel · ⌫ delete · ctrl+u clear`);
-    lines.push(padToWidth(footer, innerWidth));
-
-    // Wrap the content in a box border (top/bottom rails + side walls).
-    const side = t.fg("border", "│");
-    const out: string[] = [t.fg("border", "┌" + "─".repeat(innerWidth) + "┐")];
-    for (const line of lines) out.push(side + line + side);
-    out.push(t.fg("border", "└" + "─".repeat(innerWidth) + "┘"));
-    return out;
+    return lines;
   }
 
   invalidate(): void {
@@ -357,17 +341,21 @@ function submitHint(): string {
  * handler (pi's unified command dispatcher). Runs immediately on Enter —
  * the command is never just filled into the editor.
  */
-async function runCommand(ctx: PanelCtx, tui: TuiLike | null, item: PanelItem): Promise<void> {
-  // After the overlay closes, the TUI restores focus to the editor, so the
-  // focused component is the editor instance. `focusedComponent` is private at
-  // the type level but present at runtime.
+async function runCommand(
+  ctx: PanelCtx,
+  tui: TuiLike | null,
+  item: PanelItem,
+  commandText: string,
+): Promise<void> {
+  // The widget closes with focus on the editor. `focusedComponent` is private
+  // at the type level but present at runtime.
   const editor = (tui as { focusedComponent?: { onSubmit?: (text: string) => void } } | null)
     ?.focusedComponent;
   const onSubmit = editor?.onSubmit;
 
   if (typeof onSubmit !== "function") {
     // Fallback (should not happen): prefill and let the user submit.
-    ctx.ui.setEditorText("/" + item.name + " ");
+    ctx.ui.setEditorText(commandText + (commandText.endsWith(" ") ? "" : " "));
     ctx.ui.notify(`/${item.label} — ${submitHint()} to run`, "info");
     return;
   }
@@ -379,9 +367,9 @@ async function runCommand(ctx: PanelCtx, tui: TuiLike | null, item: PanelItem): 
     if (navigating) {
       // These change/destroy the session context; awaiting may invalidate ctx,
       // so fire-and-forget and do not touch the editor afterward.
-      void Promise.resolve(onSubmit("/" + item.name));
+      void Promise.resolve(onSubmit(commandText));
     } else {
-      await onSubmit("/" + item.name);
+      await onSubmit(commandText);
       // onSubmit clears the editor for built-in commands; restore the draft so
       // commands invoked mid-typing don't lose in-progress text.
       ctx.ui.setEditorText(draft);
@@ -413,6 +401,7 @@ export default function commandPanelExtension(pi: ExtensionAPI): void {
 
 async function openPanel(pi: ExtensionAPI, ctx: PanelCtx): Promise<void> {
   const items = buildItems(pi);
+  const draft = ctx.ui.getEditorText();
   let capturedTui: TuiLike | null = null;
 
   const action = await new Promise<PanelAction>((resolve) => {
@@ -420,15 +409,85 @@ async function openPanel(pi: ExtensionAPI, ctx: PanelCtx): Promise<void> {
       "command-panel",
       (tui, theme) => {
         capturedTui = tui;
-        const editor = (tui as TuiLike & { focusedComponent?: Component }).focusedComponent ?? null;
-        const close = (value: PanelAction): void => {
+        const editor = (tui as TuiLike & { focusedComponent?: EditorLike }).focusedComponent;
+        if (!editor) {
+          resolve(null);
+          return { render: () => [], invalidate: () => {} };
+        }
+
+        let closed = false;
+        let removeInputListener = (): void => {};
+        let panel: CommandPanel;
+
+        const close = (item: PanelItem | null): void => {
+          if (closed) return;
+          closed = true;
+
+          const editorText = editor.getText().trim();
+          const completedCommand = editorText.match(/^\/(\S+)([\s\S]*)$/);
+          const commandText = item && completedCommand?.[1] === item.name
+            ? `/${item.name}${completedCommand[2] ?? ""}`.trimEnd()
+            : item ? `/${item.name}` : "";
+
+          removeInputListener();
           ctx.ui.setWidget("command-panel", undefined);
+          ctx.ui.setEditorText(draft);
           tui.setFocus(editor);
           tui.requestRender();
-          resolve(value);
+          resolve(item ? { name: item.name, commandText } : null);
         };
-        const panel = new CommandPanel(items, theme, tui, close);
-        tui.setFocus(panel);
+
+        const syncFromEditor = (): void => {
+          const query = editor.getText();
+          // Suppress pi's slash-command popup while the panel owns command-name
+          // selection. Argument completion remains native after `/<cmd> `.
+          if (/^\/[^\s]*$/.test(query) && editor.isShowingAutocomplete()) {
+            editor.setText(query);
+          }
+          panel.setQuery(query);
+          tui.requestRender();
+        };
+
+        panel = new CommandPanel(
+          items,
+          theme,
+          tui,
+          close,
+          (item) => {
+            ctx.ui.setEditorText(`/${item.name} `);
+            panel.setQuery(ctx.ui.getEditorText());
+            tui.requestRender();
+          },
+        );
+
+        removeInputListener = tui.addInputListener((data) => {
+          // Previous keystrokes may have been delivered in the same event-loop
+          // batch, before their queued post-editor sync had a chance to run.
+          panel.setQuery(editor.getText());
+
+          const kb = getKeybindings();
+          const argumentAutocompleteOwnsKey =
+            editor.isShowingAutocomplete() &&
+            /^\/\S+\s/.test(editor.getText()) &&
+            (
+              kb.matches(data, "tui.select.up") ||
+              kb.matches(data, "tui.select.down") ||
+              kb.matches(data, "tui.input.tab") ||
+              kb.matches(data, "tui.select.confirm") ||
+              kb.matches(data, "tui.select.cancel")
+            );
+
+          if (!argumentAutocompleteOwnsKey && panel.handlePanelInput(data)) {
+            return { consume: true };
+          }
+
+          queueMicrotask(syncFromEditor);
+          return undefined;
+        });
+
+        ctx.ui.setEditorText("");
+        panel.setQuery("");
+        tui.setFocus(editor);
         return panel;
       },
       { placement: "aboveEditor" },
@@ -438,11 +497,5 @@ async function openPanel(pi: ExtensionAPI, ctx: PanelCtx): Promise<void> {
   if (!action) return;
   const item = items.find((i) => i.name === action.name);
   if (!item) return;
-
-  if (action.kind === "complete") {
-    ctx.ui.setEditorText("/" + item.name + " ");
-    return;
-  }
-
-  await runCommand(ctx, capturedTui, item);
+  await runCommand(ctx, capturedTui, item, action.commandText);
 }
