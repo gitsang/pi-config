@@ -1,15 +1,14 @@
 /**
  * Command Panel Extension
  *
- * Opens a fuzzy-searchable command panel above the editor via Ctrl+P — no
- * need to type `/<cmd>` at the start of the input.
+ * Opens a fuzzy-searchable command panel when `/` is the first editor input.
  *
- * - Ctrl+P (main editor) ........... open panel
+ * - / (start of main editor) ....... open panel
  * - type in the editor ............. fuzzy-filter across name + description
  * - ↑↓ ............................. navigate (also Ctrl+P / Ctrl+N)
  * - Tab ............................ complete `/<cmd> ` and keep panel open
  * - Enter .......................... run the selected command immediately
- * - Esc / Ctrl+C ................... cancel and restore the draft
+ * - Esc / Ctrl+C ................... cancel and keep the editor text
  *
  * How commands run (Enter executes directly, never just fills the editor):
  *   Every selection is dispatched through the editor's `onSubmit` handler, which
@@ -20,15 +19,10 @@
  *   the same session, so you can invoke commands mid-typing without losing your
  *   draft. Session-changing commands (/new, /fork, /tree, /resume, /clone,
  *   /quit, /reload) intentionally skip draft restoration.
- *
- * Requires the companion keybindings.json change that moves model cycling off
- * Ctrl+P. Note: Ctrl+M is NOT used for model cycling because Ctrl+M and Enter
- * send the same byte (0x0D) in terminals — binding model cycling to Ctrl+M
- * would make every Enter cycle the model. Model cycling uses Alt+M instead.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { keyText, type Theme } from "@earendil-works/pi-coding-agent";
+import { CustomEditor, keyText, type Theme } from "@earendil-works/pi-coding-agent";
 import {
   type Component,
   fuzzyFilter,
@@ -161,6 +155,25 @@ interface EditorLike extends Component {
   onSubmit?: (text: string) => void | Promise<void>;
 }
 
+class CommandPanelEditor extends CustomEditor {
+  onPanelTrigger?: () => void;
+
+  override handleInput(data: string): void {
+    const cursor = this.getCursor();
+    if (
+      this.onPanelTrigger &&
+      matchesKey(data, "/") &&
+      this.getText().length === 0 &&
+      cursor.line === 0 &&
+      cursor.col === 0
+    ) {
+      this.onPanelTrigger();
+      return;
+    }
+    super.handleInput(data);
+  }
+}
+
 interface PanelCtx {
   ui: {
     setEditorText: (s: string) => void;
@@ -262,6 +275,9 @@ class CommandPanel implements Component {
       }
     } else if (kb.matches(data, "tui.select.cancel")) {
       this.done(null);
+      return true;
+    } else if (matchesKey(data, "/")) {
+      // The trigger is not part of the query and must not reopen the panel.
       return true;
     } else {
       return false;
@@ -383,19 +399,33 @@ async function runCommand(
 }
 
 export default function commandPanelExtension(pi: ExtensionAPI): void {
-  // Also expose as /panel for discoverability (filtered out of the list).
+  let isOpen = false;
+  const showPanel = async (ctx: PanelCtx): Promise<void> => {
+    if (isOpen) return;
+    isOpen = true;
+    try {
+      await openPanel(pi, ctx);
+    } finally {
+      isOpen = false;
+    }
+  };
+
+  // Also expose as /panel for RPC/programmatic invocation (filtered from the list).
   pi.registerCommand("panel", {
     description: "Open the command panel",
     handler: async (_args, ctx) => {
-      await openPanel(pi, ctx);
+      await showPanel(ctx);
     },
   });
 
-  pi.registerShortcut("ctrl+p", {
-    description: "Open command panel",
-    handler: async (ctx) => {
-      await openPanel(pi, ctx);
-    },
+  pi.on("session_start", (_event, ctx) => {
+    ctx.ui.setEditorComponent((tui, theme, keybindings) => {
+      const editor = new CommandPanelEditor(tui, theme, keybindings);
+      editor.onPanelTrigger = () => {
+        void showPanel(ctx);
+      };
+      return editor;
+    });
   });
 }
 
@@ -423,7 +453,8 @@ async function openPanel(pi: ExtensionAPI, ctx: PanelCtx): Promise<void> {
           if (closed) return;
           closed = true;
 
-          const editorText = editor.getText().trim();
+          const panelText = editor.getText();
+          const editorText = panelText.trim();
           const completedCommand = editorText.match(/^\/(\S+)([\s\S]*)$/);
           const commandText = item && completedCommand?.[1] === item.name
             ? `/${item.name}${completedCommand[2] ?? ""}`.trimEnd()
@@ -431,7 +462,7 @@ async function openPanel(pi: ExtensionAPI, ctx: PanelCtx): Promise<void> {
 
           removeInputListener();
           ctx.ui.setWidget("command-panel", undefined);
-          ctx.ui.setEditorText(draft);
+          ctx.ui.setEditorText(item ? draft : panelText);
           tui.setFocus(editor);
           tui.requestRender();
           resolve(item ? { name: item.name, commandText } : null);
