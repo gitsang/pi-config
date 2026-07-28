@@ -2,9 +2,9 @@
  * pi-status — mirror pi's generation state onto the tmux window tab and this
  * pi instance's pi-statusline footer.
  *
- * tmux surface (TUI inside tmux): keeps the existing WINDOW-LEVEL @pi_t
- * mechanism. Several pi panes in one tmux window intentionally overwrite each
- * other (last writer wins).
+ * tmux surface (TUI inside tmux): every Pi process publishes its state to a
+ * process-keyed window option. The window-level @pi_t marker aggregates all Pi
+ * processes in that window, including several terminals inside one tmux pane.
  *
  * statusline surface (all TUI modes): pushes this pi's independent state via
  * ctx.ui.setStatus(statusKey, "idle"|"gen"|"done").
@@ -30,11 +30,23 @@ import {
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+	countStates,
+	formatAggregateMarker,
+	parseInstanceRecord,
+	serializeInstanceRecord,
+	type InstanceRecord,
+	type State,
+} from "./aggregate.ts";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 
 /** Event bus channel emitted by the standalone pi-focus extension. */
 const FOCUS_CHANNEL = "pi-focus:change";
+
+/** One window option per Pi process; values also carry the current session ID. */
+const INSTANCE_OPTION_PREFIX = "@pi_status_instance_";
+const INSTANCE_OPTION = `${INSTANCE_OPTION_PREFIX}${process.pid}`;
 
 // ─── config ─────────────────────────────────────────────────────────────────
 interface PiStatusConfig {
@@ -83,18 +95,17 @@ function loadConfig(ctx?: ExtensionContext): ResolvedConfig {
 }
 
 // ─── state ──────────────────────────────────────────────────────────────────
-type State = "idle" | "gen" | "done";
-
 let cfg: ResolvedConfig = { ...DEFAULTS };
 let ui: ExtensionContext["ui"] | null = null;
 let state: State = "idle";
+let sessionId = "";
 let focused = true;          // supplied by pi-focus; assume focused until first event
 let focusSeen = false;
 let statusActive = false;    // pi-statusline registration (TUI mode)
 let tmuxActive = false;      // tmux window-tab patching (TUI + inside tmux)
 let inTmux = !!process.env.TMUX;
 let pane = process.env.TMUX_PANE ?? "";
-let lastT = "";              // last @pi_t value written (dedupe)
+let lastT = "";              // last @pi_t value written by this process
 
 // ─── tmux helpers (all sync; calls are ~ms and low-frequency) ───────────────
 function tmux(args: string[]): string {
@@ -111,17 +122,79 @@ function tmux(args: string[]): string {
 	}
 }
 
-function iconFor(s: State): string {
-	return s === "gen" ? cfg.busy : s === "done" ? cfg.done : cfg.prefix;
+function isProcessAlive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code === "EPERM";
+	}
 }
 
-// Write the per-window user option @pi_t = "<icon> ". Dedupe by value.
-function writeMarker(icon: string): void {
+function unsetWindowOption(option: string): void {
+	tmux(["set-window-option", "-q", "-t", pane, "-u", option]);
+}
+
+function writeInstanceState(): void {
+	if (!tmuxActive || !sessionId) return;
+	tmux([
+		"set-window-option",
+		"-t",
+		pane,
+		INSTANCE_OPTION,
+		serializeInstanceRecord({ pid: process.pid, sessionId, state }),
+	]);
+}
+
+function readWindowInstances(): InstanceRecord[] {
+	if (!tmuxActive) return [];
+	const records: InstanceRecord[] = [];
+	const options = tmux(["show-options", "-w", "-t", pane]);
+	for (const line of options.split("\n")) {
+		const separator = line.indexOf(" ");
+		if (separator < 0) continue;
+		const option = line.slice(0, separator);
+		if (!option.startsWith(INSTANCE_OPTION_PREFIX)) continue;
+
+		const record = parseInstanceRecord(line.slice(separator + 1));
+		const optionPid = Number(option.slice(INSTANCE_OPTION_PREFIX.length));
+		if (!record || record.pid !== optionPid || !isProcessAlive(record.pid)) {
+			unsetWindowOption(option);
+			continue;
+		}
+		records.push(record);
+	}
+	return records.sort((a, b) => a.pid - b.pid);
+}
+
+function recordFingerprint(records: readonly InstanceRecord[]): string {
+	return records.map((record) => `${record.pid}:${record.sessionId}:${record.state}`).join("|");
+}
+
+// Write the aggregate per-window user option @pi_t with a trailing separator.
+function writeMarker(marker: string | null): void {
 	if (!tmuxActive) return;
-	const t = `${icon} `;
-	if (t === lastT) return;
+	if (marker === null) {
+		lastT = "";
+		unsetWindowOption("@pi_t");
+		return;
+	}
+	const t = `${marker} `;
 	lastT = t;
 	tmux(["set-window-option", "-t", pane, "@pi_t", t]);
+}
+
+function syncWindowMarker(): InstanceRecord[] {
+	let records = readWindowInstances();
+	// A second pass converges if two Pi processes change state at the same time.
+	for (let attempt = 0; attempt < 2; attempt += 1) {
+		writeMarker(formatAggregateMarker(records.map((record) => record.state), cfg));
+		const next = readWindowInstances();
+		if (recordFingerprint(next) === recordFingerprint(records)) return next;
+		records = next;
+	}
+	writeMarker(formatAggregateMarker(records.map((record) => record.state), cfg));
+	return records;
 }
 
 // ─── window-level format patching ───────────────────────────────────────────
@@ -180,8 +253,12 @@ function pushStatus(): void {
 }
 
 function setState(s: State): void {
+	if (state === s) return;
 	state = s;
-	if (tmuxActive) writeMarker(iconFor(s));
+	if (tmuxActive) {
+		writeInstanceState();
+		syncWindowMarker();
+	}
 	if (statusActive) pushStatus();
 }
 
@@ -190,33 +267,38 @@ function activate(ctx: ExtensionContext): void {
 	ui = ctx.ui;
 	inTmux = !!process.env.TMUX;
 	pane = process.env.TMUX_PANE ?? "";
+	sessionId = ctx.sessionManager.getSessionId();
 	statusActive = cfg.enabled && ctx.mode === "tui";
 	tmuxActive = statusActive && inTmux && !!pane;
 	if (!statusActive) return;
 
-	// tmux window-tab patching.
+	state = "idle";
+	lastT = "";
 	if (tmuxActive) {
+		// Register first so a concurrently exiting Pi sees this process as active.
+		writeInstanceState();
+		syncWindowMarker();
 		patchFormats();
 		suppressFlags();
 	}
-
-	state = "idle";
-	lastT = "";
-	if (tmuxActive) writeMarker(cfg.prefix);
 	pushStatus();
 }
 
 function shutdown(): void {
 	if (tmuxActive) {
-		tmux(["set-window-option", "-q", "-t", pane, "-u", "@pi_t"]);
-		unpatchFormats();
-		restoreFlags();
+		unsetWindowOption(INSTANCE_OPTION);
+		const remaining = syncWindowMarker();
+		if (remaining.length === 0) {
+			unpatchFormats();
+			restoreFlags();
+		}
 	}
 	if (statusActive && ui) {
 		try { ui.setStatus(cfg.statusKey, undefined); } catch { /* ignore */ }
 	}
 	statusActive = false;
 	tmuxActive = false;
+	sessionId = "";
 }
 
 // ─── setup ──────────────────────────────────────────────────────────────────
@@ -255,6 +337,7 @@ export default function (pi: ExtensionAPI): void {
 				return;
 			}
 			if (sub === "on") {
+				if (statusActive || tmuxActive) shutdown();
 				cfg = { ...cfg, enabled: true };
 				activate(ctx);
 				if (ctx.hasUI) ctx.ui.notify("pi-status: enabled", "info");
@@ -275,6 +358,8 @@ export default function (pi: ExtensionAPI): void {
 				return;
 			}
 			if (sub === "status") {
+				const instances = tmuxActive ? syncWindowMarker() : [];
+				const counts = countStates(instances.map((instance) => instance.state));
 				if (ctx.hasUI) ctx.ui.notify(
 					[
 						`statusActive: ${statusActive}`,
@@ -282,7 +367,11 @@ export default function (pi: ExtensionAPI): void {
 						`in tmux: ${inTmux} (pane ${pane || "—"})`,
 						`mode: ${ctx.mode}`,
 						`enabled: ${cfg.enabled}`,
+						`process: ${process.pid}`,
+						`session: ${sessionId || "—"}`,
 						`state: ${state}`,
+						`window states: idle=${counts.idle}, gen=${counts.gen}, done=${counts.done}`,
+						`window instances: ${instances.map((instance) => `${instance.pid}/${instance.sessionId}/${instance.state}`).join(", ") || "(none)"}`,
 						`focused (via pi-focus): ${focused}`,
 						`focus event seen: ${focusSeen}`,
 						`statusKey: ${cfg.statusKey}`,
@@ -291,7 +380,7 @@ export default function (pi: ExtensionAPI): void {
 						`done: ${cfg.done}`,
 						`active glyph: ${cfg.activeGlyph}`,
 						`inactive glyph: ${cfg.inactiveGlyph}`,
-						`last @pi_t: ${lastT || "(none)"}`,
+						`last @pi_t written here: ${lastT || "(none)"}`,
 					].join("\n"),
 					"info",
 				);
@@ -299,6 +388,7 @@ export default function (pi: ExtensionAPI): void {
 			}
 
 			// default / "reload"
+			if (statusActive || tmuxActive) shutdown();
 			cfg = loadConfig(ctx);
 			activate(ctx);
 			if (ctx.hasUI) ctx.ui.notify("pi-status: config reloaded", "info");
