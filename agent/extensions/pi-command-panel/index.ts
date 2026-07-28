@@ -1,12 +1,13 @@
 /**
  * Command Panel Extension
  *
- * Opens a fuzzy-searchable command panel overlay anywhere in the editor via
- * Ctrl+P — no need to type `/<cmd>` at the start of the input.
+ * Opens a fuzzy-searchable command panel above the editor via Ctrl+P — no
+ * need to type `/<cmd>` at the start of the input.
  *
  * - Ctrl+P (main editor) ........... open panel
  * - type ........................... fuzzy-filter across name + description
  * - ↑↓ ............................. navigate (also Ctrl+P / Ctrl+N)
+ * - Tab ............................ complete `/<cmd> ` into the editor
  * - Enter .......................... run the selected command immediately
  * - Esc / Ctrl+C ................... cancel
  *
@@ -46,6 +47,11 @@ interface PanelItem {
   description: string;
   source: CmdSource;
 }
+
+type PanelAction =
+  | { kind: "run"; name: string }
+  | { kind: "complete"; name: string }
+  | null;
 
 /** Built-in interactive commands (not returned by pi.getCommands()). */
 const BUILTIN_COMMANDS: PanelItem[] = [
@@ -161,7 +167,7 @@ interface PanelCtx {
 }
 
 /**
- * The panel overlay component. Implements the pi-tui Component interface.
+ * The panel component. Implements the pi-tui Component interface.
  * Render is computed fresh every frame (no caching) so selection changes
  * always reflect immediately.
  */
@@ -169,7 +175,7 @@ class CommandPanel implements Component {
   private items: PanelItem[];
   private theme: Theme;
   private tui: TuiLike;
-  private done: (value: string | null) => void;
+  private done: (value: PanelAction) => void;
 
   private query = "";
   private filtered: PanelItem[];
@@ -181,7 +187,7 @@ class CommandPanel implements Component {
     items: PanelItem[],
     theme: Theme,
     tui: TuiLike,
-    done: (value: string | null) => void,
+    done: (value: PanelAction) => void,
   ) {
     this.items = items;
     this.theme = theme;
@@ -229,8 +235,14 @@ class CommandPanel implements Component {
     } else if (matchesKey(data, "enter") || matchesKey(data, "return")) {
       const item = this.filtered[this.selected];
       if (item) {
-        this.done(item.name);
-        return; // closing overlay
+        this.done({ kind: "run", name: item.name });
+        return;
+      }
+    } else if (matchesKey(data, "tab")) {
+      const item = this.filtered[this.selected];
+      if (item) {
+        this.done({ kind: "complete", name: item.name });
+        return;
       }
     } else if (matchesKey(data, "escape") || matchesKey(data, "esc") || matchesKey(data, "ctrl+c")) {
       this.done(null);
@@ -285,7 +297,7 @@ class CommandPanel implements Component {
 
     // Title
     const title = t.fg("accent", t.bold(" Command Panel"));
-    const hint = t.fg("dim", "  type to filter · ↑↓ select · ⏎ run · esc cancel");
+    const hint = t.fg("dim", "  type to filter · ↑↓ select · tab complete · ⏎ run · esc cancel");
     lines.push(padToWidth(title + hint, innerWidth));
 
     // Separator
@@ -315,7 +327,7 @@ class CommandPanel implements Component {
 
     // Footer
     const count = `${this.filtered.length}/${this.items.length}`;
-    const footer = t.fg("dim", ` ${count}   ⏎ run · esc cancel · ⌫ delete char · ctrl+u clear`);
+    const footer = t.fg("dim", ` ${count}   tab complete · ⏎ run · esc cancel · ⌫ delete · ctrl+u clear`);
     lines.push(padToWidth(footer, innerWidth));
 
     // Wrap the content in a box border (top/bottom rails + side walls).
@@ -403,13 +415,13 @@ async function openPanel(pi: ExtensionAPI, ctx: PanelCtx): Promise<void> {
   const items = buildItems(pi);
   let capturedTui: TuiLike | null = null;
 
-  const chosen = await new Promise<string | null>((resolve) => {
+  const action = await new Promise<PanelAction>((resolve) => {
     ctx.ui.setWidget(
       "command-panel",
       (tui, theme) => {
         capturedTui = tui;
         const editor = (tui as TuiLike & { focusedComponent?: Component }).focusedComponent ?? null;
-        const close = (value: string | null): void => {
+        const close = (value: PanelAction): void => {
           ctx.ui.setWidget("command-panel", undefined);
           tui.setFocus(editor);
           tui.requestRender();
@@ -423,8 +435,14 @@ async function openPanel(pi: ExtensionAPI, ctx: PanelCtx): Promise<void> {
     );
   });
 
-  if (!chosen) return;
-  const item = items.find((i) => i.name === chosen);
+  if (!action) return;
+  const item = items.find((i) => i.name === action.name);
   if (!item) return;
+
+  if (action.kind === "complete") {
+    ctx.ui.setEditorText("/" + item.name + " ");
+    return;
+  }
+
   await runCommand(ctx, capturedTui, item);
 }
