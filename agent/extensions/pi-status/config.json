@@ -4,5 +4,6 @@
   "busy": "\uf110",
   "done": "\uf05d",
   "activeGlyph": "\ue795",
-  "inactiveGlyph": "\uf489"
+  "inactiveGlyph": "\uf489",
+  "statusKey": "pi-status"
 }
