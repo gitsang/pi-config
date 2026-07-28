@@ -1,5 +1,5 @@
 /**
- * pi-status — mirror pi's generation state onto the tmux window tab and this
+ * pi-tmux-status — mirror pi's generation state onto the tmux window tab and this
  * pi instance's pi-statusline footer.
  *
  * tmux surface (TUI inside tmux): every Pi process publishes its state to a
@@ -7,17 +7,17 @@
  * processes in that window, including several terminals inside one tmux pane.
  *
  * statusline surface (all TUI modes): pushes this pi's independent state via
- * ctx.ui.setStatus("pi-status", "idle"|"gen"|"done").
+ * ctx.ui.setStatus("pi-tmux-status", "idle"|"gen"|"done").
  *
  * Focus is supplied by the standalone pi-focus extension over the
- * "pi-focus:change" event bus channel. pi-status never enables or consumes DEC
+ * "pi-focus:change" event bus channel. pi-tmux-status never enables or consumes DEC
  * 1004 itself. When a turn settles while unfocused it enters done; the next
  * focus-in event reverts it to idle.
  *
  * Config precedence:
- *   ~/.pi/agent/pi-status.json < ./config.json < <cwd>/.pi/pi-status.json
+ *   ~/.pi/agent/pi-tmux-status.json < ./config.json < <cwd>/.pi/pi-tmux-status.json
  *
- * Command: /pi-status [reload|on|off|state idle|gen|done|status]
+ * Command: /pi-tmux-status [reload|on|off|state idle|gen|done|status]
  */
 
 import { spawnSync } from "node:child_process";
@@ -44,10 +44,10 @@ const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 /** Event bus channel emitted by the standalone pi-focus extension. */
 const FOCUS_CHANNEL = "pi-focus:change";
 /** Fixed ext-status key exposed to pi-statusline. */
-const STATUS_KEY = "pi-status";
+const PI_TMUX_STATUS_KEY = "pi-tmux-status";
 
 /** One window option per Pi process; values also carry the current session ID. */
-const INSTANCE_OPTION_PREFIX = "@pi_status_instance_";
+const INSTANCE_OPTION_PREFIX = "@pi_tmux_status_instance_";
 const INSTANCE_OPTION = `${INSTANCE_OPTION_PREFIX}${process.pid}`;
 
 // ─── config ─────────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ interface TmuxGlyphConfig {
 	inactiveGlyph?: string;
 }
 
-interface PiStatusConfig {
+interface PiTmuxStatusConfig {
 	idle?: string;     // idle / default icon
 	busy?: string;     // generating icon
 	done?: string;     // done badge icon
@@ -84,18 +84,18 @@ const DEFAULTS: ResolvedConfig = {
 	},
 };
 
-function tryRead(p: string): PiStatusConfig | null {
+function tryRead(p: string): PiTmuxStatusConfig | null {
 	try {
 		const parsed = JSON.parse(readFileSync(p, "utf8"));
 		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-			? (parsed as PiStatusConfig)
+			? (parsed as PiTmuxStatusConfig)
 			: null;
 	} catch {
 		return null;
 	}
 }
 
-function mergeConfig(base: PiStatusConfig, override: PiStatusConfig | null): PiStatusConfig {
+function mergeConfig(base: PiTmuxStatusConfig, override: PiTmuxStatusConfig | null): PiTmuxStatusConfig {
 	if (!override) return base;
 	return {
 		...base,
@@ -105,11 +105,11 @@ function mergeConfig(base: PiStatusConfig, override: PiStatusConfig | null): PiS
 }
 
 function loadConfig(ctx?: ExtensionContext): ResolvedConfig {
-	let raw: PiStatusConfig = {};
-	raw = mergeConfig(raw, tryRead(join(getAgentDir(), "pi-status.json")));
+	let raw: PiTmuxStatusConfig = {};
+	raw = mergeConfig(raw, tryRead(join(getAgentDir(), "pi-tmux-status.json")));
 	raw = mergeConfig(raw, tryRead(join(EXT_DIR, "config.json")));
 	if (ctx?.isProjectTrusted()) {
-		raw = mergeConfig(raw, tryRead(join(ctx.cwd, CONFIG_DIR_NAME, "pi-status.json")));
+		raw = mergeConfig(raw, tryRead(join(ctx.cwd, CONFIG_DIR_NAME, "pi-tmux-status.json")));
 	}
 	return {
 		idle: raw.idle ?? DEFAULTS.idle,
@@ -278,7 +278,7 @@ function handleFocusEvent(data: unknown): void {
 // ─── state transition ───────────────────────────────────────────────────────
 function pushStatus(): void {
 	if (!statusActive || !ui) return;
-	try { ui.setStatus(STATUS_KEY, state); } catch { /* ignore */ }
+	try { ui.setStatus(PI_TMUX_STATUS_KEY, state); } catch { /* ignore */ }
 }
 
 function setState(s: State): void {
@@ -323,7 +323,7 @@ function shutdown(): void {
 		}
 	}
 	if (statusActive && ui) {
-		try { ui.setStatus(STATUS_KEY, undefined); } catch { /* ignore */ }
+		try { ui.setStatus(PI_TMUX_STATUS_KEY, undefined); } catch { /* ignore */ }
 	}
 	statusActive = false;
 	tmuxActive = false;
@@ -353,8 +353,8 @@ export default function (pi: ExtensionAPI): void {
 
 	pi.on("session_shutdown", () => shutdown());
 
-	pi.registerCommand("pi-status", {
-		description: "pi status (tmux tab + statusline): [reload|on|off|state <s>|status]",
+	pi.registerCommand("pi-tmux-status", {
+		description: "Pi tmux status: [reload|on|off|state <s>|status]",
 		handler: async (args, ctx) => {
 			const parts = args.trim().split(/\s+/);
 			const sub = (parts[0] ?? "").toLowerCase();
@@ -362,20 +362,20 @@ export default function (pi: ExtensionAPI): void {
 			if (sub === "off") {
 				shutdown();
 				cfg = { ...cfg, enabled: false };
-				if (ctx.hasUI) ctx.ui.notify("pi-status: disabled", "info");
+				if (ctx.hasUI) ctx.ui.notify("pi-tmux-status: disabled", "info");
 				return;
 			}
 			if (sub === "on") {
 				if (statusActive || tmuxActive) shutdown();
 				cfg = { ...cfg, enabled: true };
 				activate(ctx);
-				if (ctx.hasUI) ctx.ui.notify("pi-status: enabled", "info");
+				if (ctx.hasUI) ctx.ui.notify("pi-tmux-status: enabled", "info");
 				return;
 			}
 			if (sub === "state") {
 				const s = (parts[1] ?? "").toLowerCase();
 				if (s !== "idle" && s !== "gen" && s !== "done") {
-					if (ctx.hasUI) ctx.ui.notify("usage: /pi-status state idle|gen|done", "warning");
+					if (ctx.hasUI) ctx.ui.notify("usage: /pi-tmux-status state idle|gen|done", "warning");
 					return;
 				}
 				if (!statusActive) {
@@ -383,7 +383,7 @@ export default function (pi: ExtensionAPI): void {
 					activate(ctx);
 				}
 				setState(s);
-				if (ctx.hasUI) ctx.ui.notify(`pi-status: state → ${s}`, "info");
+				if (ctx.hasUI) ctx.ui.notify(`pi-tmux-status: state → ${s}`, "info");
 				return;
 			}
 			if (sub === "status") {
@@ -403,7 +403,7 @@ export default function (pi: ExtensionAPI): void {
 						`window instances: ${instances.map((instance) => `${instance.pid}/${instance.sessionId}/${instance.state}`).join(", ") || "(none)"}`,
 						`focused (via pi-focus): ${focused}`,
 						`focus event seen: ${focusSeen}`,
-						`status key: ${STATUS_KEY} (fixed)`,
+						`status key: ${PI_TMUX_STATUS_KEY} (fixed)`,
 						`idle: ${cfg.idle}`,
 						`busy: ${cfg.busy}`,
 						`done: ${cfg.done}`,
@@ -420,7 +420,7 @@ export default function (pi: ExtensionAPI): void {
 			if (statusActive || tmuxActive) shutdown();
 			cfg = loadConfig(ctx);
 			activate(ctx);
-			if (ctx.hasUI) ctx.ui.notify("pi-status: config reloaded", "info");
+			if (ctx.hasUI) ctx.ui.notify("pi-tmux-status: config reloaded", "info");
 		},
 	});
 }
