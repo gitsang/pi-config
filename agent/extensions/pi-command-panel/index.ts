@@ -144,6 +144,7 @@ function padToWidth(str: string, width: number): string {
 
 interface TuiLike {
   requestRender: () => void;
+  setFocus: (component: Component | null) => void;
 }
 
 interface PanelCtx {
@@ -151,15 +152,11 @@ interface PanelCtx {
     setEditorText: (s: string) => void;
     getEditorText: () => string;
     notify: (m: string, t?: "info" | "warning" | "error") => void;
-    custom: <T>(
-      factory: (
-        tui: TuiLike,
-        theme: Theme,
-        keybindings: unknown,
-        done: (value: T) => void,
-      ) => Component | { render: (w: number) => string[]; invalidate: () => void; handleInput: (d: string) => void },
-      options?: { overlay?: boolean; overlayOptions?: Record<string, unknown> },
-    ) => Promise<T>;
+    setWidget: (
+      key: string,
+      content: ((tui: TuiLike, theme: Theme) => Component) | undefined,
+      options?: { placement?: "aboveEditor" | "belowEditor" },
+    ) => void;
   };
 }
 
@@ -406,28 +403,25 @@ async function openPanel(pi: ExtensionAPI, ctx: PanelCtx): Promise<void> {
   const items = buildItems(pi);
   let capturedTui: TuiLike | null = null;
 
-  const chosen = await ctx.ui.custom<string | null>(
-    (tui, theme, _keybindings, done) => {
-      capturedTui = tui;
-      const panel = new CommandPanel(items, theme, tui, done);
-      return {
-        render: (w: number) => panel.render(w),
-        invalidate: () => panel.invalidate(),
-        handleInput: (d: string) => {
-          panel.handleInput(d);
-        },
-      };
-    },
-    {
-      overlay: true,
-      overlayOptions: {
-        anchor: "center",
-        width: "72%",
-        minWidth: 52,
-        margin: 1,
+  const chosen = await new Promise<string | null>((resolve) => {
+    ctx.ui.setWidget(
+      "command-panel",
+      (tui, theme) => {
+        capturedTui = tui;
+        const editor = (tui as TuiLike & { focusedComponent?: Component }).focusedComponent ?? null;
+        const close = (value: string | null): void => {
+          ctx.ui.setWidget("command-panel", undefined);
+          tui.setFocus(editor);
+          tui.requestRender();
+          resolve(value);
+        };
+        const panel = new CommandPanel(items, theme, tui, close);
+        tui.setFocus(panel);
+        return panel;
       },
-    },
-  );
+      { placement: "aboveEditor" },
+    );
+  });
 
   if (!chosen) return;
   const item = items.find((i) => i.name === chosen);
