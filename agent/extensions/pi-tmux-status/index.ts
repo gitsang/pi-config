@@ -132,6 +132,7 @@ let focused = true;          // supplied by pi-focus; assume focused until first
 let focusSeen = false;
 let statusActive = false;    // pi-statusline registration (TUI mode)
 let tmuxActive = false;      // tmux window-tab patching (TUI + inside tmux)
+let exitCleanupRegistered = false;
 let inTmux = !!process.env.TMUX;
 let pane = process.env.TMUX_PANE ?? "";
 let lastT = "";              // last @pi_t value written by this process
@@ -304,6 +305,7 @@ function activate(ctx: ExtensionContext): void {
 	state = "idle";
 	lastT = "";
 	if (tmuxActive) {
+		registerExitCleanup();
 		// Register first so a concurrently exiting Pi sees this process as active.
 		writeInstanceState();
 		syncWindowMarker();
@@ -313,20 +315,43 @@ function activate(ctx: ExtensionContext): void {
 	pushStatus();
 }
 
-function shutdown(): void {
-	if (tmuxActive) {
-		unsetWindowOption(INSTANCE_OPTION);
-		const remaining = syncWindowMarker();
-		if (remaining.length === 0) {
-			unpatchFormats();
-			restoreFlags();
-		}
+function cleanupTmux(): void {
+	if (!tmuxActive) return;
+	unsetWindowOption(INSTANCE_OPTION);
+	const remaining = syncWindowMarker();
+	if (remaining.length === 0) {
+		unpatchFormats();
+		restoreFlags();
 	}
+	tmuxActive = false;
+}
+
+// Pi's dead-terminal emergency path exits without session_shutdown. Node still
+// emits "exit", where only synchronous cleanup is allowed; tmux() uses spawnSync.
+function handleProcessExit(): void {
+	exitCleanupRegistered = false;
+	cleanupTmux();
+}
+
+function registerExitCleanup(): void {
+	if (exitCleanupRegistered) return;
+	process.once("exit", handleProcessExit);
+	exitCleanupRegistered = true;
+}
+
+function unregisterExitCleanup(): void {
+	if (!exitCleanupRegistered) return;
+	process.off("exit", handleProcessExit);
+	exitCleanupRegistered = false;
+}
+
+function shutdown(): void {
+	cleanupTmux();
+	unregisterExitCleanup();
 	if (statusActive && ui) {
 		try { ui.setStatus(PI_TMUX_STATUS_KEY, undefined); } catch { /* ignore */ }
 	}
 	statusActive = false;
-	tmuxActive = false;
 	sessionId = "";
 }
 
