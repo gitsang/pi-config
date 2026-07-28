@@ -8,8 +8,7 @@
     "npm:pi-subagents",
     "npm:pi-btw",
     "npm:@pi-plugins/checkpoint",
-    "npm:@quintinshaw/pi-dynamic-workflows",
-    "npm:@jmfederico/pi-web"
+    "npm:@quintinshaw/pi-dynamic-workflows"
   ],
   "subagents": {
     "defaultModel": "saigw/glm-5.2",
