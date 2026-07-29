@@ -3,7 +3,7 @@
   "theme": "dark",
   "defaultProvider": "saigw-openai",
   "defaultModel": "gpt-5.6-sol",
-  "defaultThinkingLevel": "low",
+  "defaultThinkingLevel": "medium",
   "packages": [
     "npm:pi-subagents",
     "npm:pi-btw",
