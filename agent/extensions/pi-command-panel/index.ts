@@ -1,8 +1,10 @@
 /**
  * Command Panel Extension
  *
- * Opens a fuzzy-searchable command panel when `/` is the first editor input.
+ * Opens a fuzzy-searchable command panel via Ctrl+P or when `/` is the first
+ * editor input.
  *
+ * - Ctrl+P (main editor) ........... open panel
  * - / (start of main editor) ....... open panel
  * - type in the editor ............. fuzzy-filter across name + description
  * - ↑↓ ............................. navigate (also Ctrl+P / Ctrl+N)
@@ -414,6 +416,13 @@ export default function commandPanelExtension(pi: ExtensionAPI): void {
   pi.registerCommand("panel", {
     description: "Open the command panel",
     handler: async (_args, ctx) => {
+      await showPanel(ctx);
+    },
+  });
+
+  pi.registerShortcut("ctrl+p", {
+    description: "Open command panel",
+    handler: async (ctx) => {
       await showPanel(ctx);
     },
   });

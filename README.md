@@ -197,7 +197,7 @@ ships the full template.
 | Extension | Purpose |
 |---|---|
 | **pi-statusline** | A dense, config-driven 4-line Tokyo Night footer: title, cwd, git branch, model, thinking level, service tier, token usage (in/out/cache read/write/cache-hit), cost, context bar+%, TTFT, TPS, and today's tokens/cost. Cross-extension via `ext-status` (other extensions publish values it renders). `/statusline` toggles/reloads, `/statusline-reset` clears TTFT/TPS history. |
-| **pi-command-panel** | `/` as the first input opens a fuzzy command panel above the editor; elsewhere `/` remains literal. The real editor filters; Tab completes and closes the panel, while Enter runs the command. |
+| **pi-command-panel** | `Ctrl+P`, or `/` as the first input, opens a fuzzy command panel above the editor; elsewhere `/` remains literal. The real editor filters; Tab completes and closes the panel, while Enter runs the command. |
 | **pi-git** | Fast git ops via a small model. `/pi-git:commit`, `/pi-git:commit-and-push`, `/pi-git <prompt>` agentic loop; also exposes a `pi_git` LLM tool. Hard-blocks destructive commands; write/push need confirm in the command path. Current config uses `saigw/deepseek-v4-flash`, previews off, push/write confirmed, `Co-Authored-By: Pi` trailer. See `extensions/pi-git/README.md`. |
 | **pi-metrics** | Persistent local usage metrics (tokens + cost + prompt/session counts per day/month/all-time) in an append-only `events.jsonl`. Publishes `metrics-today-tokens`/`-cost` etc. for the statusline; `/metrics` prints a summary. |
 | **pi-auto-title** | Auto-generates short session titles after the first Q&A, regenerates after compaction, and refreshes every 25 turns (current config). `/auto-title` regen/off/on/status. |
