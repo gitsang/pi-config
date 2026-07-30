@@ -46,6 +46,8 @@ import { fileURLToPath } from "node:url";
 
 /** Directory this extension lives in — config is read next to it. */
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
+const STATUS_KEY = "pi-auto-title";
+const SPINNER_FRAMES = ["⠦", "⠧", "⠇", "⠏", "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠤"];
 
 type Language = "auto" | "zh" | "en";
 
@@ -139,8 +141,34 @@ export default function (pi: ExtensionAPI) {
 		if (ctx.hasUI) ctx.ui.notify(msg, level);
 	};
 
+	let statusTimer: ReturnType<typeof setInterval> | undefined;
+
 	const reloadConfig = (ctx: ExtensionContext) => {
 		state.config = resolveConfig(loadConfig(ctx));
+	};
+
+	const setGeneratingStatus = (ctx: ExtensionContext, generating: boolean) => {
+		if (statusTimer) {
+			clearInterval(statusTimer);
+			statusTimer = undefined;
+		}
+		if (!ctx.hasUI) return;
+		if (!generating) {
+			ctx.ui.setStatus(STATUS_KEY, undefined);
+			return;
+		}
+		if (ctx.mode !== "tui") {
+			ctx.ui.setStatus(STATUS_KEY, `${SPINNER_FRAMES[0]!} Generating Title...`);
+			return;
+		}
+
+		let frame = 0;
+		const render = () => {
+			ctx.ui.setStatus(STATUS_KEY, `${SPINNER_FRAMES[frame]!} Generating Title...`);
+			frame = (frame + 1) % SPINNER_FRAMES.length;
+		};
+		render();
+		statusTimer = setInterval(render, 120);
 	};
 
 	const resolveModel = (ctx: ExtensionContext, cfg: ResolvedConfig) => {
@@ -223,12 +251,14 @@ export default function (pi: ExtensionAPI) {
 		if (state.generating) return;
 		if (!state.enabled && source !== "manual") return;
 		state.generating = true;
+		setGeneratingStatus(ctx, true);
 		try {
 			await generate(ctx, source, text);
 		} catch (err) {
 			notify(ctx, `pi-auto-title: ${err instanceof Error ? err.message : String(err)}`, "error");
 		} finally {
 			state.generating = false;
+			setGeneratingStatus(ctx, false);
 		}
 	};
 
@@ -240,7 +270,12 @@ export default function (pi: ExtensionAPI) {
 		state.enabled = true;
 		state.generating = false;
 		state.suppressNextSettled = false;
+		setGeneratingStatus(ctx, false);
 		reloadConfig(ctx);
+	});
+
+	pi.on("session_shutdown", (_event, ctx) => {
+		setGeneratingStatus(ctx, false);
 	});
 
 	// Round counting + first-turn / periodic refresh.

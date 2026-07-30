@@ -1,7 +1,7 @@
 {
   "lines": [
     {
-      "left": ["title"],
+      "left": ["autoTitle", "title"],
       "sepLeft": " ",
       "right": ["model", "thinking", "stier"],
       "sepRight": " "
@@ -30,6 +30,11 @@
       "source": "session.cwd",
       "color": "fg",
       "truncate": "start"
+    },
+    "autoTitle": {
+      "source": "ext-status",
+      "key": "pi-auto-title",
+      "color": "yellow"
     },
     "title": {
       "source": "session.name",
@@ -188,6 +193,7 @@
   "priority": {
     "cwd": 100,
     "branch": 60,
+    "autoTitle": 110,
     "title": 30,
     "model": 95,
     "thinking": 40,
