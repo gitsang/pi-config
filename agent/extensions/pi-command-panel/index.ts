@@ -402,11 +402,11 @@ async function runCommand(
 
 export default function commandPanelExtension(pi: ExtensionAPI): void {
   let isOpen = false;
-  const showPanel = async (ctx: PanelCtx): Promise<void> => {
+  const showPanel = async (ctx: PanelCtx, initialText = ""): Promise<void> => {
     if (isOpen) return;
     isOpen = true;
     try {
-      await openPanel(pi, ctx);
+      await openPanel(pi, ctx, initialText);
     } finally {
       isOpen = false;
     }
@@ -431,14 +431,18 @@ export default function commandPanelExtension(pi: ExtensionAPI): void {
     ctx.ui.setEditorComponent((tui, theme, keybindings) => {
       const editor = new CommandPanelEditor(tui, theme, keybindings);
       editor.onPanelTrigger = () => {
-        void showPanel(ctx);
+        void showPanel(ctx, "/");
       };
       return editor;
     });
   });
 }
 
-async function openPanel(pi: ExtensionAPI, ctx: PanelCtx): Promise<void> {
+async function openPanel(
+  pi: ExtensionAPI,
+  ctx: PanelCtx,
+  initialText = "",
+): Promise<void> {
   const items = buildItems(pi);
   const draft = ctx.ui.getEditorText();
   let capturedTui: TuiLike | null = null;
@@ -524,8 +528,8 @@ async function openPanel(pi: ExtensionAPI, ctx: PanelCtx): Promise<void> {
           return undefined;
         });
 
-        ctx.ui.setEditorText("");
-        panel.setQuery("");
+        ctx.ui.setEditorText(initialText);
+        panel.setQuery(initialText);
         tui.setFocus(editor);
         return panel;
       },
