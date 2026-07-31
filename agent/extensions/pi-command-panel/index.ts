@@ -278,9 +278,6 @@ class CommandPanel implements Component {
     } else if (kb.matches(data, "tui.select.cancel")) {
       this.done(null);
       return true;
-    } else if (matchesKey(data, "/")) {
-      // The trigger is not part of the query and must not reopen the panel.
-      return true;
     } else {
       return false;
     }
