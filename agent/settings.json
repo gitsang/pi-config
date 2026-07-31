@@ -6,7 +6,6 @@
   "defaultThinkingLevel": "medium",
   "packages": [
     "npm:pi-subagents",
-    "npm:pi-btw",
     "npm:@pi-plugins/checkpoint",
     "npm:@quintinshaw/pi-dynamic-workflows"
   ],
