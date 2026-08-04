@@ -1,9 +1,9 @@
 {
   "lastChangelogVersion": "0.83.0",
   "theme": "dark",
-  "defaultProvider": "saigw-openai",
-  "defaultModel": "gpt-5.6-sol",
-  "defaultThinkingLevel": "medium",
+  "defaultProvider": "saigw",
+  "defaultModel": "deepseek-v4-flash",
+  "defaultThinkingLevel": "high",
   "packages": [
     "npm:pi-subagents",
     "npm:@pi-plugins/checkpoint",

@@ -16,6 +16,7 @@ Thumbs.db
 *.swp
 *.swo
 *.log
+*.jsonl
 
 # ===== Binaries =====
 bin/
