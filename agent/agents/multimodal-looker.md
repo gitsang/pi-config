@@ -2,6 +2,9 @@
 name: multimodal-looker
 description: Vision and screenshot analysis. Reads images and describes their content for the orchestrator.
 tools: read, grep, find, ls, bash
+model: saigw/kimi-k2.7-code
+fallbackModels:
+  - saigw/minimax-m3
 thinking: medium
 systemPromptMode: append
 inheritProjectContext: false
