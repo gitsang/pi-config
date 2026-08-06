@@ -119,6 +119,7 @@ interface ModuleConfig {
 	text?: string;       // literal
 	glyph?: string;
 	format?: string;     // tok|pct|sec1|tps1|dollars3|int|ctxnums|raw
+	valueMap?: Record<string, string>;  // raw value -> display text/icon
 	color?: ColorSpec;
 	prefix?: string;
 	suffix?: string;
@@ -356,7 +357,10 @@ function renderModule(mc: ModuleConfig, sc: SourceContext): { text: string; part
 			return { text: c(resolveColor(mc.color, focusState()), mc.glyph) };
 		}
 		const raw = fetchSource(mc.source, sc, mc);
-		const formatted = formatValue(mc.format, raw, mc.nullText);
+		const displayValue = raw === null || raw === undefined
+			? raw
+			: (mc.valueMap?.[String(raw)] ?? raw);
+		const formatted = formatValue(mc.format, displayValue, mc.nullText);
 		if (formatted === "") return { text: "" };
 		const body = `${mc.prefix ?? ""}${formatted}${mc.suffix ?? ""}`;
 		const color = resolveColor(mc.color, raw);

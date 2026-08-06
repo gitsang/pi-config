@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "store": {},
+  "tmux": {
+    "enabled": true,
+    "idle": "",
+    "busy": "",
+    "done": "",
+    "activeGlyph": "",
+    "inactiveGlyph": ""
+  },
+  "statusline": {
+    "enabled": true,
+    "key": "pi-status"
+  }
+}

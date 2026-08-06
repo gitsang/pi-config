@@ -2,8 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
 	formatAggregateMarker,
-	parseInstanceRecord,
-	serializeInstanceRecord,
 	superscriptCount,
 	type MarkerGlyphs,
 } from "./aggregate.ts";
@@ -27,16 +25,4 @@ test("shows only non-zero active state counts", () => {
 test("supports multi-digit superscript counts and no registered processes", () => {
 	assert.equal(superscriptCount(10), "¹⁰");
 	assert.equal(formatAggregateMarker([], glyphs), null);
-});
-
-test("round-trips process records", () => {
-	const record = { pid: 1234, sessionId: "session/with spaces", state: "gen" } as const;
-	assert.deepEqual(parseInstanceRecord(serializeInstanceRecord(record)), record);
-});
-
-test("rejects malformed process records", () => {
-	assert.equal(parseInstanceRecord("v1|0|idle|session"), null);
-	assert.equal(parseInstanceRecord("v1|123|unknown|session"), null);
-	assert.equal(parseInstanceRecord("v2|123|idle|session"), null);
-	assert.equal(parseInstanceRecord("v1|123|idle|"), null);
 });

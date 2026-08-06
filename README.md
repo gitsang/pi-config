@@ -196,23 +196,25 @@ ships the full template.
 
 | Extension | Purpose |
 |---|---|
-| **pi-statusline** | A dense, config-driven 4-line Tokyo Night footer: title, cwd, git branch, model, thinking level, service tier, token usage (in/out/cache read/write/cache-hit), cost, context bar+%, TTFT, TPS, and today's tokens/cost. Cross-extension via `ext-status` (other extensions publish values it renders). `/statusline` toggles/reloads, `/statusline-reset` clears TTFT/TPS history. |
+| **pi-statusline** | A dense, config-driven 4-line Tokyo Night footer: Pi process state, title, cwd, git branch, model, thinking level, service tier, token usage (in/out/cache read/write/cache-hit), cost, context bar+%, TTFT, TPS, and today's tokens/cost. Cross-extension via `ext-status` (other extensions publish values it renders). `/statusline` toggles/reloads, `/statusline-reset` clears TTFT/TPS history. |
 | **pi-command-panel** | `Ctrl+P`, or `/` as the first input, opens a fuzzy command panel above the editor; elsewhere `/` remains literal. The real editor filters; Tab completes and closes the panel, while Enter runs the command. |
 | **pi-git** | Fast git ops via a small model. `/pi-git:commit`, `/pi-git:commit-and-push`, `/pi-git <prompt>` agentic loop; also exposes a `pi_git` LLM tool. Hard-blocks destructive commands; write/push need confirm in the command path. Current config uses `saigw/deepseek-v4-flash`, previews off, push/write confirmed, `Co-Authored-By: Pi` trailer. See `extensions/pi-git/README.md`. |
 | **pi-metrics** | Persistent local usage metrics (tokens + cost + prompt/session counts per day/month/all-time) in an append-only `events.jsonl`. Publishes `metrics-today-tokens`/`-cost` etc. for the statusline; `/metrics` prints a summary. |
 | **pi-auto-title** | Auto-generates short session titles after the first Q&A, regenerates after compaction, and refreshes every 25 turns (current config). `/auto-title` regen/off/on/status. |
 | **pi-model-lock** | Prevents in-session model/thinking switches from overwriting the global `defaultModel`/`defaultProvider`/`defaultThinkingLevel` in `settings.json` (restores the snapshot taken at session start). `enable: true`. `/model-lock` status, `/model-save` persists current as new default. |
 | **pi-service-tier** | Injects OpenAI `service_tier` into request payloads (models.json has no field for it). Current config marks `saigw-openai` as tier-capable, defaulting to `priority` with `auto/default/flex/priority` allowed. |
-| **pi-tmux-status** | Mirrors Pi state onto the tmux window tab and each Pi footer. The tmux marker aggregates processes by PID across the whole window (including multiple terminals in one pane): all idle → one idle glyph; otherwise non-zero generating/done states → icon plus superscript count. |
+| **pi-status** | Publishes each Pi process's `idle`/`gen`/`done` state to a shared runtime store. Filesystem update events drive two independent projections: tmux aggregates live records for the same server/window into `@pi_t`, while pi-statusline pulls this process's record into the `pi-status` `ext-status` key. `/pi-status` reloads, toggles, inspects, or forces state. |
 
 ### How they fit together
 
-`pi-statusline` is the render surface; `pi-metrics` (today's usage) and
-`pi-service-tier` (current tier) publish into it via `ctx.ui.setStatus(...)`
-+ the `ext-status` source — no direct imports between extensions. `pi-git`
-provides the `pi_git` tool the main agent uses to delegate commits.
-`pi-command-panel`, `pi-auto-title`, `pi-model-lock`, and `pi-tmux-status` are
-independent UX/behavior tweaks.
+`pi-statusline` is the render surface; `pi-metrics` (today's usage),
+`pi-service-tier` (current tier), and `pi-status` (process state) publish into
+it via `ctx.ui.setStatus(...)` + the `ext-status` source. `pi-status` first
+writes an atomic per-PID snapshot to the shared runtime store, then its tmux
+and statusline sinks react to `pi-status:update` and pull the records they need.
+`pi-git` provides the `pi_git` tool the main agent uses to delegate commits.
+`pi-command-panel`, `pi-auto-title`, and `pi-model-lock` are independent
+UX/behavior tweaks.
 
 ---
 

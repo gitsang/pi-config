@@ -1,7 +1,7 @@
 {
   "lines": [
     {
-      "left": ["autoTitle", "title"],
+      "left": ["piState", "autoTitle", "title"],
       "sepLeft": " ",
       "right": ["model", "thinking", "stier"],
       "sepRight": " "
@@ -30,6 +30,23 @@
       "source": "session.cwd",
       "color": "fg",
       "truncate": "start"
+    },
+    "piState": {
+      "source": "ext-status",
+      "key": "pi-status",
+      "valueMap": {
+        "idle": " ",
+        "gen": " ",
+        "done": " "
+      },
+      "color": {
+        "map": {
+          "idle": "comment",
+          "gen": "cyan",
+          "done": "green"
+        },
+        "default": "fgDark"
+      }
     },
     "autoTitle": {
       "source": "ext-status",
@@ -193,6 +210,7 @@
   "priority": {
     "cwd": 100,
     "branch": 60,
+    "piState": 115,
     "autoTitle": 110,
     "title": 30,
     "model": 95,

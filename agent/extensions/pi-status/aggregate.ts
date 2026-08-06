@@ -1,11 +1,5 @@
 export type State = "idle" | "gen" | "done";
 
-export interface InstanceRecord {
-	pid: number;
-	sessionId: string;
-	state: State;
-}
-
 export interface MarkerGlyphs {
 	idle: string;
 	busy: string;
@@ -19,7 +13,6 @@ export interface StateCounts {
 }
 
 const SUPERSCRIPT_DIGITS = ["⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"] as const;
-const RECORD_VERSION = "v1";
 
 export function countStates(states: readonly State[]): StateCounts {
 	const counts: StateCounts = { idle: 0, gen: 0, done: 0 };
@@ -45,30 +38,4 @@ export function formatAggregateMarker(
 	if (counts.gen > 0) marker += `${glyphs.busy} ${superscriptCount(counts.gen)}`;
 	if (counts.done > 0) marker += `${glyphs.done} ${superscriptCount(counts.done)}`;
 	return marker;
-}
-
-export function serializeInstanceRecord(record: InstanceRecord): string {
-	return [
-		RECORD_VERSION,
-		String(record.pid),
-		record.state,
-		encodeURIComponent(record.sessionId),
-	].join("|");
-}
-
-export function parseInstanceRecord(value: string): InstanceRecord | null {
-	const [version, rawPid, state, encodedSessionId, ...extra] = value.split("|");
-	if (version !== RECORD_VERSION || extra.length > 0 || !/^[1-9]\d*$/.test(rawPid ?? "")) {
-		return null;
-	}
-	if (state !== "idle" && state !== "gen" && state !== "done") return null;
-
-	const pid = Number(rawPid);
-	if (!Number.isSafeInteger(pid)) return null;
-	try {
-		const sessionId = decodeURIComponent(encodedSessionId ?? "");
-		return sessionId ? { pid, sessionId, state } : null;
-	} catch {
-		return null;
-	}
 }

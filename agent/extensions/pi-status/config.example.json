@@ -1,0 +1,19 @@
+{
+  "_comment": "pi-status config. Each Pi process atomically publishes <pid>.json into a shared runtime directory. Empty store.directory uses $XDG_RUNTIME_DIR/pi-status, falling back to /tmp/pi-status-<uid>. fs.watch changes are bridged to the process-local pi-status:update event. The tmux sink then pulls all live records for the same tmux server + window_id, aggregates idle/gen/done, and writes @pi_t; the statusline sink pulls only this PID/session and publishes it through ctx.ui.setStatus(statusline.key, state), consumable by pi-statusline's ext-status source. Config precedence: legacy global ~/.pi/agent/pi-tmux-status.json < global ~/.pi/agent/pi-status.json < extension ./config.json < legacy trusted project <cwd>/.pi/pi-tmux-status.json < trusted project <cwd>/.pi/pi-status.json. Legacy flat idle/busy/done/statusKey/tmuxGlyph fields remain readable. tmux activeGlyph/inactiveGlyph are the theme terminal glyphs replaced by #{@pi_t}. Focus comes only from pi-focus; inside tmux, enable `set -g focus-events on`. Use /pi-status reload after config edits or /reload after code edits.",
+  "enabled": true,
+  "store": {
+    "directory": ""
+  },
+  "tmux": {
+    "enabled": true,
+    "idle": "",
+    "busy": "",
+    "done": "",
+    "activeGlyph": "",
+    "inactiveGlyph": ""
+  },
+  "statusline": {
+    "enabled": true,
+    "key": "pi-status"
+  }
+}
