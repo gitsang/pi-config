@@ -1,8 +1,8 @@
 {
   "lastChangelogVersion": "0.84.1",
   "theme": "dark",
-  "defaultProvider": "saigw-openai",
-  "defaultModel": "gpt-5.6-sol",
+  "defaultProvider": "saigw",
+  "defaultModel": "deepseek-v4-flash",
   "defaultThinkingLevel": "low",
   "packages": [],
   "subagents": {
