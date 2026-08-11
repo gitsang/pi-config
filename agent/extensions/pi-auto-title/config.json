@@ -2,7 +2,7 @@
   "model": "",
   "onFirstTurn": true,
   "onCompact": true,
-  "refreshEveryTurns": 25,
+  "refreshEveryTurns": 5,
   "maxTitleLength": 60,
   "language": "auto",
   "setTerminalTitle": false
