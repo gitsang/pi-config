@@ -2,7 +2,7 @@
   "lastChangelogVersion": "0.84.1",
   "theme": "dark",
   "defaultProvider": "saigw",
-  "defaultModel": "deepseek-v4-flash",
+  "defaultModel": "gpt-5.6-sol",
   "defaultThinkingLevel": "low",
   "packages": [],
   "subagents": {
@@ -10,4 +10,3 @@
   },
   "hideThinkingBlock": false
 }
-
