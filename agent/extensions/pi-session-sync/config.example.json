@@ -1,0 +1,4 @@
+{
+  "lockInputDuringExternalWrite": false,
+  "debounceMs": 600
+}
