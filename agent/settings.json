@@ -3,7 +3,7 @@
   "theme": "dark",
   "defaultProvider": "saigw",
   "defaultModel": "deepseek-v4-pro",
-  "defaultThinkingLevel": "high",
+  "defaultThinkingLevel": "max",
   "packages": [],
   "subagents": {
     "defaultModel": "saigw-openai/gpt-5.6-sol"
