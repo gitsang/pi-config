@@ -107,9 +107,50 @@ function readSettings(): Settings | null {
   }
 }
 
+function escapeJsonString(value: string): string {
+  return JSON.stringify(value).slice(1, -1);
+}
+
+/**
+ * Replace the value of a top-level string field in place, without touching
+ * anything else (indentation, line endings, trailing newline, field order,
+ * comments in the surrounding text, etc.).
+ *
+ * pi writes settings.json with 2-space indentation, and nested objects like
+ * `subagents.defaultModel` are indented deeper, so anchoring at `^  ` keeps
+ * this scoped to top-level fields only.
+ */
+function patchJsonStringField(raw: string, key: string, value: string): string {
+  const escaped = escapeJsonString(value);
+  const re = new RegExp(`^(  "${key}"\\s*:\\s*)"(?:[^"\\\\]|\\\\.)*"`, "m");
+  return raw.replace(re, (_match, prefix) => `${prefix}"${escaped}"`);
+}
+
 function writeSettings(s: Settings): void {
-  // Match pi's own format: 2-space indent, no trailing newline.
-  writeFileSync(SETTINGS_PATH, JSON.stringify(s, null, 2), "utf-8");
+  let raw: string;
+  try {
+    raw = readFileSync(SETTINGS_PATH, "utf-8");
+  } catch {
+    // File is missing; nothing to preserve, so create it in pi's usual format.
+    writeFileSync(SETTINGS_PATH, JSON.stringify(s, null, 2), "utf-8");
+    return;
+  }
+
+  // Patch only the field values in the existing text. This preserves the
+  // file's final newline (and all other formatting) instead of rewriting the
+  // whole file with JSON.stringify.
+  const stringFields: Array<[key: string, value: string | undefined]> = [
+    ["defaultProvider", s.defaultProvider],
+    ["defaultModel", s.defaultModel],
+    ["defaultThinkingLevel", s.defaultThinkingLevel],
+  ];
+
+  for (const [key, value] of stringFields) {
+    if (typeof value !== "string") continue;
+    raw = patchJsonStringField(raw, key, value);
+  }
+
+  writeFileSync(SETTINGS_PATH, raw, "utf-8");
 }
 
 function protectedDefaultFromSettings(s: Settings | null): ProtectedDefault | null {
