@@ -11,7 +11,7 @@ export interface FishingConfig {
 
 export const DEFAULT_FISHING_CONFIG: FishingConfig = {
 	uiVisible: false,
-	animationIntervalMs: 200,
+	animationIntervalMs: 1000,
 	tickIntervalMs: 500,
 	defaultInventoryCapacity: 10,
 	baitTokensPerCast: 2000,

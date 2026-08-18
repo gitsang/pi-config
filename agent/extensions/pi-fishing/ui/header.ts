@@ -2,6 +2,7 @@ import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { FishingGame } from "../core/game.ts";
 import { FISHING_FRAMES } from "./frames.ts";
 import { fmtCoins, fmtTokens } from "./format.ts";
+import { createPixelFishingFrames, PIXEL_FISHING_WIDTH } from "./pixel-fishing.ts";
 
 interface HeaderThemeLike {
 	fg?: (name: string, text: string) => string;
@@ -16,11 +17,20 @@ export class FishingPanel {
 	private readonly game: FishingGame;
 	private readonly theme: HeaderThemeLike | undefined;
 	private readonly intervalMs: number;
+	private readonly pixelFrames: string[][];
+	private readonly pixelAvailable: boolean;
 
 	constructor(game: FishingGame, theme: HeaderThemeLike | undefined, intervalMs = 200) {
 		this.game = game;
 		this.theme = theme;
 		this.intervalMs = intervalMs;
+		try {
+			this.pixelFrames = createPixelFishingFrames();
+			this.pixelAvailable = true;
+		} catch {
+			this.pixelFrames = FISHING_FRAMES;
+			this.pixelAvailable = false;
+		}
 	}
 
 	setRequestRender(fn: () => void): void {
@@ -30,7 +40,7 @@ export class FishingPanel {
 	start(): void {
 		if (this.timer) return;
 		this.timer = setInterval(() => {
-			this.frame = (this.frame + 1) % FISHING_FRAMES.length;
+			this.frame = (this.frame + 1) % this.pixelFrames.length;
 			this.requestRender?.();
 		}, this.intervalMs);
 	}
@@ -55,12 +65,18 @@ export class FishingPanel {
 
 		const line1 = `🎣 鱼饵 ${fmtTokens(state.pendingBaitTokens)}/${fmtTokens(snapshot.baitTokensPerCast)}  金币 ${fmtCoins(state.coins)}  累计 ${fmtTokens(state.totalTokensConsumed)} tok`;
 		const line2 = `${rod.emoji} ${rod.name} Lv.${level}  🐟 鱼篓 ${snapshot.inventoryUsed}/${snapshot.inventoryCapacity}  🐠 鱼缸 ${state.aquariums.length}`;
-		const frame = FISHING_FRAMES[this.frame] ?? FISHING_FRAMES[0]!;
+		const usePixelFrame = this.pixelAvailable && width >= PIXEL_FISHING_WIDTH;
+		const frame = usePixelFrame
+			? this.pixelFrames[this.frame] ?? this.pixelFrames[0]!
+			: FISHING_FRAMES[this.frame] ?? FISHING_FRAMES[0]!;
 		const eventLine = state.lastEventText || "…";
+		const lines = [line1, line2, ...frame, eventLine];
 
-		return [line1, line2, ...frame, eventLine].map((line) =>
-			truncateToWidth(this.color("accent", line), Math.max(0, width)),
-		);
+		return lines.map((line, index) => {
+			const infoOrEvent = index < 2 || index === lines.length - 1;
+			if (usePixelFrame && !infoOrEvent) return line;
+			return truncateToWidth(this.color("accent", line), Math.max(0, width));
+		});
 	}
 
 	private color(name: string, text: string): string {
@@ -74,7 +90,7 @@ export class FishingPanel {
 	}
 }
 
-export function createFishingWidget(game: FishingGame, intervalMs = 200): (tui: unknown, theme: unknown) => {
+export function createFishingWidget(game: FishingGame, intervalMs = 1000): (tui: unknown, theme: unknown) => {
 	render(width: number): string[];
 	invalidate(): void;
 	dispose(): void;

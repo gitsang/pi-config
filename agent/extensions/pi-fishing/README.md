@@ -17,12 +17,16 @@
 - `/pi-fishing remove <fishId>` — 从鱼缸取出鱼
 - `/pi-fishing stats` — 查看累计统计
 
+## 动画
+
+终端宽度 >= 80 列时，钓鱼面板会使用 `ui/pixel-frames/*.ansi` 的 8 帧 truecolor 像素动画；终端较窄时自动退回内置 ASCII 动画。
+
 ## 配置
 
 复制 `config.example.json` 为 `config.json` 可修改：
 
 - `uiVisible`：初始是否显示 header，默认 `false`
-- `animationIntervalMs`：动画帧间隔，默认 `200`
+- `animationIntervalMs`：动画帧间隔，默认 `1000`（1s 一帧）
 - `tickIntervalMs`：游戏结算 tick 间隔，默认 `500`
 - `defaultInventoryCapacity`：鱼篓初始容量，默认 `10`
 - `baitTokensPerCast`：竹竿的抛竿 token 阈值，默认 `2000`
