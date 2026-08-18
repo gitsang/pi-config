@@ -99,13 +99,18 @@ function normalizeState(raw: Record<string, unknown>): GameState {
 		? raw.collection.map(normalizeCollectionEntry).filter((entry): entry is CollectionEntry => entry !== undefined)
 		: [];
 
+	const rawEquippedRodId = toStringValue(raw.equippedRodId, base.equippedRodId);
+	const equippedRodId = ownedRods.some((rod) => rod.rodId === rawEquippedRodId)
+		? rawEquippedRodId
+		: (ownedRods[0]?.rodId ?? base.equippedRodId);
+
 	return {
 		version: CURRENT_STATE_VERSION,
 		uiVisible: toBooleanValue(raw.uiVisible, base.uiVisible),
 		coins: Math.max(0, Math.round(toFiniteNumber(raw.coins, base.coins))),
 		totalTokensConsumed: Math.max(0, toFiniteNumber(raw.totalTokensConsumed, base.totalTokensConsumed)),
 		pendingBaitTokens: Math.max(0, toFiniteNumber(raw.pendingBaitTokens, base.pendingBaitTokens)),
-		equippedRodId: toStringValue(raw.equippedRodId, base.equippedRodId),
+		equippedRodId,
 		ownedRods: ownedRods.length > 0 ? ownedRods : base.ownedRods,
 		aquariums,
 		inventory,
