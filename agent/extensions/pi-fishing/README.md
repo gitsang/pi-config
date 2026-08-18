@@ -4,7 +4,7 @@
 
 ## 使用
 
-- `/pi-fishing show` — 在 TUI header 显示钓鱼面板
+- `/pi-fishing show` — 在编辑器上方显示固定钓鱼面板（终端高度至少 16 行）
 - `/pi-fishing hide` — 隐藏钓鱼面板
 - `/pi-fishing status` — 查看当前状态
 - `/pi-fishing sell <fishId|all>` — 出售鱼

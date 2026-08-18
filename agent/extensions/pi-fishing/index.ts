@@ -5,12 +5,19 @@ import { setupPiAdapter } from "./adapters/pi-adapter.ts";
 import { loadFishingConfig, type FishingConfig } from "./config.ts";
 import { FishingGame, type Command, type GameEffect } from "./core/game.ts";
 import { FishingStore } from "./store/store.ts";
-import { createFishingHeader } from "./ui/header.ts";
+import { createFishingWidget } from "./ui/header.ts";
 import { fmtCoins, fmtLength, fmtTokens, fmtWeight } from "./ui/format.ts";
 import { getAquariumOrThrow } from "./core/aquariums.ts";
 import { getSpeciesOrThrow } from "./core/species.ts";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
+const FISHING_WIDGET_KEY = "pi-fishing";
+const MIN_TERMINAL_ROWS_FOR_PANEL = 16;
+
+function getTerminalRows(): number | undefined {
+	const rows = (process.stdout as unknown as { rows?: number }).rows;
+	return typeof rows === "number" && rows > 0 ? rows : undefined;
+}
 
 function notifyEffects(ctx: ExtensionContext, effects: GameEffect[]): void {
 	const line = [...effects].reverse().find((effect) => effect.type === "EventLine");
@@ -96,17 +103,19 @@ export default function (pi: ExtensionAPI): void {
 
 	setupPiAdapter(pi, game, store);
 
-	const installHeader = (ctx: ExtensionContext): void => {
+	const installWidget = (ctx: ExtensionContext): void => {
 		if (ctx.mode !== "tui") return;
-		ctx.ui.setHeader(createFishingHeader(game, config.animationIntervalMs));
+		ctx.ui.setWidget(FISHING_WIDGET_KEY, createFishingWidget(game, config.animationIntervalMs), {
+			placement: "aboveEditor",
+		});
 	};
-	const removeHeader = (ctx: ExtensionContext): void => {
+	const removeWidget = (ctx: ExtensionContext): void => {
 		if (ctx.mode !== "tui") return;
-		ctx.ui.setHeader(undefined);
+		ctx.ui.setWidget(FISHING_WIDGET_KEY, undefined);
 	};
 
 	pi.on("session_start", (_event, ctx) => {
-		if (game.getState().uiVisible) installHeader(ctx);
+		if (game.getState().uiVisible) installWidget(ctx);
 	});
 
 	const tickTimer = setInterval(() => {
@@ -134,13 +143,21 @@ export default function (pi: ExtensionAPI): void {
 
 			switch (sub) {
 				case "show": {
+					const rows = getTerminalRows();
+					if (rows !== undefined && rows < MIN_TERMINAL_ROWS_FOR_PANEL) {
+						ctx.ui.notify(
+							`终端高度不足（当前 ${rows} 行，至少需要 ${MIN_TERMINAL_ROWS_FOR_PANEL} 行），无法打开 pi-fishing 面板`,
+							"warning",
+						);
+						return;
+					}
 					applyCommand({ type: "Show" });
-					installHeader(ctx);
+					installWidget(ctx);
 					return;
 				}
 				case "hide": {
 					applyCommand({ type: "Hide" });
-					removeHeader(ctx);
+					removeWidget(ctx);
 					return;
 				}
 				case "status":

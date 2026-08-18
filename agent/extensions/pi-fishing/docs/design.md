@@ -418,7 +418,7 @@ rating = clamp(
 
 ### 7.1 展示状态
 
-展示状态默认关闭。用户执行 `/pi-fishing show` 后，pi-fishing 通过 `ctx.ui.setHeader(factory)` 安装自定义 header；执行 `/pi-fishing hide` 后调用 `ctx.ui.setHeader(undefined)` 恢复内置 header。展示状态持久化在 `state.json` 的 `uiVisible` 字段中，在后续会话 `session_start` 时自动恢复。
+展示状态默认关闭。用户执行 `/pi-fishing show` 后，pi-fishing 通过 `ctx.ui.setWidget("pi-fishing", factory, { placement: "aboveEditor" })` 在编辑器上方安装固定面板；执行 `/pi-fishing hide` 后调用 `ctx.ui.setWidget("pi-fishing", undefined)` 移除。pi 的 `setHeader` 位于 ScrollView 内，输出到达后会被滚走，因此采用 `aboveEditor` widget 插槽保持固定可见。打开面板时检测终端高度，低于 16 行时拒绝打开并提示。展示状态持久化在 `state.json` 的 `uiVisible` 字段中，在后续会话 `session_start` 时自动恢复。
 
 ### 7.2 行布局
 

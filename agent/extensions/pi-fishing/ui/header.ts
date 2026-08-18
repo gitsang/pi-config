@@ -9,7 +9,7 @@ interface HeaderThemeLike {
 	dim?: (text: string) => string;
 }
 
-export class FishingHeader {
+export class FishingPanel {
 	private frame = 0;
 	private timer: ReturnType<typeof setInterval> | undefined;
 	private requestRender: (() => void) | undefined;
@@ -74,13 +74,13 @@ export class FishingHeader {
 	}
 }
 
-export function createFishingHeader(game: FishingGame, intervalMs = 200): (tui: unknown, theme: unknown) => {
+export function createFishingWidget(game: FishingGame, intervalMs = 200): (tui: unknown, theme: unknown) => {
 	render(width: number): string[];
 	invalidate(): void;
 	dispose(): void;
 } {
 	return (tui, theme) => {
-		const header = new FishingHeader(game, theme as HeaderThemeLike | undefined, intervalMs);
+		const header = new FishingPanel(game, theme as HeaderThemeLike | undefined, intervalMs);
 		const tuiLike = tui as { requestRender?: () => void };
 		header.setRequestRender(() => tuiLike.requestRender?.());
 		header.start();
