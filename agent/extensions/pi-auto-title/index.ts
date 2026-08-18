@@ -34,8 +34,6 @@
 import { complete } from "@earendil-works/pi-ai/compat";
 import {
 	CONFIG_DIR_NAME,
-	convertToLlm,
-	serializeConversation,
 	type ExtensionAPI,
 	type ExtensionContext,
 	type SessionMessageEntry,
@@ -89,6 +87,7 @@ interface State {
 	enabled: boolean;
 	generating: boolean;
 	suppressNextSettled: boolean;
+	generationEpoch: number;
 }
 
 function resolveConfig(raw: AutoTitleConfig): ResolvedConfig {
@@ -112,13 +111,25 @@ function loadConfig(ctx: ExtensionContext): AutoTitleConfig {
 	return merged;
 }
 
-function buildConversationText(ctx: ExtensionContext): string {
+/** Collect every user text message in the current branch, in order. */
+function buildUserInputText(ctx: ExtensionContext): string {
 	const branch = ctx.sessionManager.getBranch();
-	const messages = branch
-		.filter((e): e is SessionMessageEntry => e.type === "message")
-		.map((e) => e.message);
-	if (messages.length === 0) return "";
-	return serializeConversation(convertToLlm(messages));
+	const parts: string[] = [];
+	for (const entry of branch) {
+		if (entry.type !== "message") continue;
+		const message: SessionMessageEntry["message"] = entry.message;
+		if (!("role" in message) || message.role !== "user") continue;
+		const text =
+			typeof message.content === "string"
+				? message.content
+				: message.content
+						.filter((block): block is { type: "text"; text: string } => block.type === "text")
+						.map((block) => block.text)
+						.join("\n");
+		const trimmed = text.trim();
+		if (trimmed) parts.push(trimmed);
+	}
+	return parts.join("\n\n");
 }
 
 function cleanupTitle(raw: string, maxLen: number): string {
@@ -135,6 +146,7 @@ export default function (pi: ExtensionAPI) {
 		enabled: true,
 		generating: false,
 		suppressNextSettled: false,
+		generationEpoch: 0,
 	};
 
 	const notify = (ctx: ExtensionContext, msg: string, level: "info" | "warning" | "error") => {
@@ -185,15 +197,22 @@ export default function (pi: ExtensionAPI) {
 		return ctx.model;
 	};
 
-	const generate = async (ctx: ExtensionContext, source: GenSource, conversationText: string) => {
+	const generate = async (
+		ctx: ExtensionContext,
+		source: GenSource,
+		conversationText: string,
+		epoch: number,
+	) => {
+		const isCurrent = () => epoch === state.generationEpoch;
 		const cfg = state.config;
 		const model = resolveModel(ctx, cfg);
 		if (!model) {
-			notify(ctx, "pi-auto-title: no model available", "warning");
+			if (isCurrent()) notify(ctx, "pi-auto-title: no model available", "warning");
 			return;
 		}
 
 		const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+		if (!isCurrent()) return;
 		if (!auth.ok) {
 			notify(ctx, `pi-auto-title: auth failed: ${auth.error}`, "warning");
 			return;
@@ -219,7 +238,7 @@ export default function (pi: ExtensionAPI) {
 			"- Output ONLY the title text, nothing else.",
 			"",
 			"<conversation>",
-			conversationText.slice(-3000),
+			conversationText,
 			"</conversation>",
 		].join("\n");
 
@@ -228,6 +247,7 @@ export default function (pi: ExtensionAPI) {
 			{ messages: [{ role: "user", content: [{ type: "text" as const, text: prompt }], timestamp: Date.now() }] },
 			{ apiKey: auth.apiKey, headers: auth.headers, env: auth.env, maxTokens: 64 },
 		);
+		if (!isCurrent()) return;
 
 		const title = cleanupTitle(
 			response.content
@@ -238,10 +258,11 @@ export default function (pi: ExtensionAPI) {
 		);
 
 		if (!title) {
-			notify(ctx, "pi-auto-title: model returned an empty title", "warning");
+			if (isCurrent()) notify(ctx, "pi-auto-title: model returned an empty title", "warning");
 			return;
 		}
 
+		if (!isCurrent()) return;
 		pi.setSessionName(title);
 		if (cfg.setTerminalTitle && ctx.hasUI) ctx.ui.setTitle(`pi - ${title}`);
 		notify(ctx, `pi-auto-title (${source}): ${title}`, "info");
@@ -250,15 +271,20 @@ export default function (pi: ExtensionAPI) {
 	const runGenerate = async (ctx: ExtensionContext, source: GenSource, text: string) => {
 		if (state.generating) return;
 		if (!state.enabled && source !== "manual") return;
+		const epoch = state.generationEpoch;
 		state.generating = true;
-		setGeneratingStatus(ctx, true);
 		try {
-			await generate(ctx, source, text);
+			setGeneratingStatus(ctx, true);
+			await generate(ctx, source, text, epoch);
 		} catch (err) {
-			notify(ctx, `pi-auto-title: ${err instanceof Error ? err.message : String(err)}`, "error");
+			if (epoch === state.generationEpoch) {
+				notify(ctx, `pi-auto-title: ${err instanceof Error ? err.message : String(err)}`, "error");
+			}
 		} finally {
-			state.generating = false;
-			setGeneratingStatus(ctx, false);
+			if (epoch === state.generationEpoch) {
+				state.generating = false;
+				setGeneratingStatus(ctx, false);
+			}
 		}
 	};
 
@@ -266,6 +292,7 @@ export default function (pi: ExtensionAPI) {
 
 	// Reset per-session state and (re)load config on every session start.
 	pi.on("session_start", (_event, ctx) => {
+		state.generationEpoch += 1;
 		state.roundCount = 0;
 		state.enabled = true;
 		state.generating = false;
@@ -275,11 +302,13 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_shutdown", (_event, ctx) => {
+		state.generationEpoch += 1;
 		setGeneratingStatus(ctx, false);
 	});
 
 	// Round counting + first-turn / periodic refresh.
-	pi.on("agent_settled", async (_event, ctx) => {
+	// Generation runs in the background so it never blocks pi's settle handling.
+	pi.on("agent_settled", (_event, ctx) => {
 		if (!isAutoMode(ctx)) return;
 		if (state.suppressNextSettled) {
 			state.suppressNextSettled = false;
@@ -297,13 +326,14 @@ export default function (pi: ExtensionAPI) {
 		}
 		if (!source) return;
 
-		const text = buildConversationText(ctx);
+		const text = buildUserInputText(ctx);
 		if (!text.trim()) return;
-		await runGenerate(ctx, source, text);
+		void runGenerate(ctx, source, text);
 	});
 
 	// Regenerate from the compaction summary after compaction.
-	pi.on("session_compact", async (event, ctx) => {
+	// Also backgrounded so compaction isn't blocked on title generation.
+	pi.on("session_compact", (event, ctx) => {
 		if (!isAutoMode(ctx)) return;
 		if (!state.config.onCompact) return;
 		// If the compacted turn will be retried, the following agent_settled should not
@@ -311,7 +341,7 @@ export default function (pi: ExtensionAPI) {
 		state.suppressNextSettled = true;
 		const text = event.compactionEntry.summary;
 		if (!text.trim()) return;
-		await runGenerate(ctx, "compact", text);
+		void runGenerate(ctx, "compact", text);
 	});
 
 	pi.registerCommand("auto-title", {
@@ -353,7 +383,7 @@ export default function (pi: ExtensionAPI) {
 
 			// default / "regen" / "gen" / "now" -> regenerate immediately
 			reloadConfig(ctx);
-			const text = buildConversationText(ctx);
+			const text = buildUserInputText(ctx);
 			if (!text.trim()) {
 				notify(ctx, "pi-auto-title: no conversation to title yet", "warning");
 				return;

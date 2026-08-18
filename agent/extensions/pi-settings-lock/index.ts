@@ -1,5 +1,5 @@
 /**
- * pi-model-lock — prevent in-session model/thinking changes from overwriting
+ * pi-settings-lock — prevent in-session model/thinking changes from overwriting
  * the global `defaultModel`/`defaultProvider`/`defaultThinkingLevel` in
  * `~/.pi/agent/settings.json`.
  *
@@ -24,9 +24,9 @@
  * the next model switch without a reload.
  *
  * Commands (for convenience; not part of config.json):
- *   /model-lock   — show status (enable state, protected defaults, current
+ *   /settings-lock   — show status (enable state, protected defaults, current
  *                   model + thinking level)
- *   /model-save   — persist the CURRENT session model AND thinking level as
+ *   /settings-save   — persist the CURRENT session model AND thinking level as
  *                   the new global defaults (one-time write; the protected
  *                   defaults are updated to match, so later changes in this
  *                   session preserve the new values)
@@ -51,7 +51,7 @@
  * Known limitation: the protected defaults are the values in settings.json at
  * session start. If you hand-edit settings.json (or change it via `/settings`)
  * mid-session and then switch models/thinking, this extension restores the
- * session-start values, not your mid-session edits. Use `/model-save` to bake
+ * session-start values, not your mid-session edits. Use `/settings-save` to bake
  * in new intended defaults.
  */
 
@@ -223,7 +223,7 @@ export default function (pi: ExtensionAPI) {
 
     if (ctx.hasUI) {
       ctx.ui.notify(
-        `model-lock: switched to ${next.provider}/${next.id} for this session; ` +
+        `settings-lock: switched to ${next.provider}/${next.id} for this session; ` +
           `global default preserved (${target.provider}/${target.model}).`,
         "info",
       );
@@ -272,16 +272,16 @@ export default function (pi: ExtensionAPI) {
 
     if (ctx.hasUI) {
       ctx.ui.notify(
-        `model-lock: thinking set to ${next} for this session; ` +
+        `settings-lock: thinking set to ${next} for this session; ` +
           `global defaultThinkingLevel preserved (${target.thinkingLevel}).`,
         "info",
       );
     }
   });
 
-  // /model-lock — show status.
-  pi.registerCommand("model-lock", {
-    description: "Show pi-model-lock status (config.json enable state + protected defaults)",
+  // /settings-lock — show status.
+  pi.registerCommand("settings-lock", {
+    description: "Show pi-settings-lock status (config.json enable state + protected defaults)",
     handler: async (_args, ctx) => {
       const enabled = isEnabled();
       const cur = ctx.model;
@@ -292,7 +292,7 @@ export default function (pi: ExtensionAPI) {
         : "none";
       const protThink = protectedDefault?.thinkingLevel ?? "none";
       ctx.ui.notify(
-        `model-lock: ${enabled ? "ON" : "OFF"} (config.json) · ` +
+        `settings-lock: ${enabled ? "ON" : "OFF"} (config.json) · ` +
           `protected: ${protModelStr} / thinking ${protThink} · ` +
           `current: ${curModelStr} / thinking ${curThink}`,
         "info",
@@ -300,15 +300,15 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // /model-save — persist the current session model as the new global default.
+  // /settings-save — persist the current session model as the new global default.
   // One-time write; updates the in-memory protected default so later switches
   // in this session preserve the newly saved value.
-  pi.registerCommand("model-save", {
+  pi.registerCommand("settings-save", {
     description: "Persist the current session model + thinking level as the new global default (one-time write)",
     handler: async (_args, ctx) => {
       const cur = ctx.model;
       if (!cur?.provider || !cur?.id) {
-        ctx.ui.notify("model-save: no current model to save.", "warning");
+        ctx.ui.notify("settings-save: no current model to save.", "warning");
         return;
       }
       const thinking = pi.getThinkingLevel();
@@ -323,7 +323,7 @@ export default function (pi: ExtensionAPI) {
       // preserve the values we just intentionally saved.
       protectedDefault = { provider: cur.provider, model: cur.id, thinkingLevel: thinking };
       ctx.ui.notify(
-        `model-save: default now ${cur.provider}/${cur.id} / thinking ${thinking ?? "none"} ` +
+        `settings-save: default now ${cur.provider}/${cur.id} / thinking ${thinking ?? "none"} ` +
           `(was ${prevModel} / thinking ${prevThink}).`,
         "info",
       );
