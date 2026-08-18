@@ -4,10 +4,6 @@
   "defaultProvider": "saigw",
   "defaultModel": "deepseek-v4-pro",
   "defaultThinkingLevel": "max",
-  "packages": [],
-  "subagents": {
-    "defaultModel": "saigw-openai/gpt-5.6-sol"
-  },
-  "hideThinkingBlock": false
+  "hideThinkingBlock": false,
+  "packages": []
 }
-
