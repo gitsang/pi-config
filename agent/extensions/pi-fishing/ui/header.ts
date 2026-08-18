@@ -74,13 +74,13 @@ export class FishingHeader {
 	}
 }
 
-export function createFishingHeader(game: FishingGame, intervalMs = 200): (tui: unknown, theme: HeaderThemeLike) => {
+export function createFishingHeader(game: FishingGame, intervalMs = 200): (tui: unknown, theme: unknown) => {
 	render(width: number): string[];
 	invalidate(): void;
 	dispose(): void;
 } {
 	return (tui, theme) => {
-		const header = new FishingHeader(game, theme, intervalMs);
+		const header = new FishingHeader(game, theme as HeaderThemeLike | undefined, intervalMs);
 		const tuiLike = tui as { requestRender?: () => void };
 		header.setRequestRender(() => tuiLike.requestRender?.());
 		header.start();
