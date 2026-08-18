@@ -1,0 +1,7 @@
+{
+  "uiVisible": false,
+  "animationIntervalMs": 200,
+  "tickIntervalMs": 500,
+  "defaultInventoryCapacity": 10,
+  "baitTokensPerCast": 2000
+}
