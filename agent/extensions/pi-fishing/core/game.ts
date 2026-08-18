@@ -56,6 +56,7 @@ export interface GameSnapshot {
 	inventoryUsed: number;
 	inventoryCapacity: number;
 	baitProgress: number;
+	baitTokensPerCast: number;
 	lastEventText: string;
 }
 
@@ -95,12 +96,14 @@ export class FishingGame {
 
 	snapshot(): GameSnapshot {
 		const equippedRod = getRodOrThrow(this.state.equippedRodId);
+		const baitTokensPerCast = this.baitThreshold(equippedRod);
 		return {
 			state: this.state,
 			equippedRod,
 			inventoryUsed: this.state.inventory.length,
 			inventoryCapacity: this.state.inventoryCapacity,
-			baitProgress: Math.min(1, this.state.pendingBaitTokens / this.baitThreshold(equippedRod)),
+			baitProgress: Math.min(1, this.state.pendingBaitTokens / baitTokensPerCast),
+			baitTokensPerCast,
 			lastEventText: this.state.lastEventText,
 		};
 	}
