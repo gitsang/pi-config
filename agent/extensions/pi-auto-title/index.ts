@@ -1,9 +1,9 @@
 /**
  * pi-auto-title — automatic session titles for pi.
  *
- * - Generates a short title after the first Q&A exchange (default on).
+ * - Generates a short title as soon as the first user input is submitted (default on).
  * - Regenerates the title after compaction, from the compaction summary (default on).
- * - Optionally refreshes the title every N conversation rounds (default off).
+ * - Optionally refreshes the title every N user inputs (default off).
  * - Manual regeneration / control via the `/auto-title` command.
  * - Titles are shown in the TUI via pi.setSessionName() (session selector + header).
  *
@@ -15,9 +15,9 @@
  * Config schema (all optional):
  * {
  *   "model": "saigw/glm-5.2",   // "provider/modelId"; default = current model
- *   "onFirstTurn": true,        // generate after first Q&A (default true)
+ *   "onFirstTurn": true,        // generate after first user input (default true)
  *   "onCompact": true,          // regenerate after compaction (default true)
- *   "refreshEveryTurns": 0,     // 0 = off; N = regenerate every N rounds
+ *   "refreshEveryTurns": 0,     // 0 = off; N = regenerate every N user inputs
  *   "maxTitleLength": 60,       // truncate title to this length
  *   "language": "auto",         // "auto" | "zh" | "en" (default "auto")
  *   "setTerminalTitle": false   // also set the terminal/tab title (default false)
@@ -86,7 +86,6 @@ interface State {
 	roundCount: number;
 	enabled: boolean;
 	generating: boolean;
-	suppressNextSettled: boolean;
 	generationEpoch: number;
 }
 
@@ -112,7 +111,7 @@ function loadConfig(ctx: ExtensionContext): AutoTitleConfig {
 }
 
 /** Collect every user text message in the current branch, in order. */
-function buildUserInputText(ctx: ExtensionContext): string {
+function buildUserInputText(ctx: ExtensionContext, extraText?: string): string {
 	const branch = ctx.sessionManager.getBranch();
 	const parts: string[] = [];
 	for (const entry of branch) {
@@ -129,7 +128,22 @@ function buildUserInputText(ctx: ExtensionContext): string {
 		const trimmed = text.trim();
 		if (trimmed) parts.push(trimmed);
 	}
+
+	const extra = extraText?.trim();
+	if (extra && parts[parts.length - 1] !== extra) parts.push(extra);
 	return parts.join("\n\n");
+}
+
+/** True for inputs pi handles as commands rather than conversation (/, !, $). */
+function isCommandInput(text: string): boolean {
+	const t = text.trimStart();
+	if (t.startsWith("/") || t.startsWith("!")) return true;
+	if (t.charCodeAt(0) !== 36) return false; // '$'
+	if (t.charCodeAt(1) === 123) return false; // '${...}'
+	const offset = t.charCodeAt(1) === 36 ? 2 : 1; // '$$'
+	const c = t.charCodeAt(offset);
+	if (Number.isNaN(c)) return false;
+	return (c === 32 || c === 9 || c === 10 || c === 13) && t.slice(offset).trim().length > 0;
 }
 
 function cleanupTitle(raw: string, maxLen: number): string {
@@ -145,7 +159,6 @@ export default function (pi: ExtensionAPI) {
 		roundCount: 0,
 		enabled: true,
 		generating: false,
-		suppressNextSettled: false,
 		generationEpoch: 0,
 	};
 
@@ -296,7 +309,6 @@ export default function (pi: ExtensionAPI) {
 		state.roundCount = 0;
 		state.enabled = true;
 		state.generating = false;
-		state.suppressNextSettled = false;
 		setGeneratingStatus(ctx, false);
 		reloadConfig(ctx);
 	});
@@ -306,14 +318,14 @@ export default function (pi: ExtensionAPI) {
 		setGeneratingStatus(ctx, false);
 	});
 
-	// Round counting + first-turn / periodic refresh.
-	// Generation runs in the background so it never blocks pi's settle handling.
-	pi.on("agent_settled", (_event, ctx) => {
+	// First-turn / periodic refresh. This fires as soon as the user submits an
+	// input, before the agent response starts, and generation runs in the background.
+	pi.on("input", (event, ctx) => {
 		if (!isAutoMode(ctx)) return;
-		if (state.suppressNextSettled) {
-			state.suppressNextSettled = false;
-			return;
-		}
+		if (event.source !== "interactive" && event.source !== "rpc") return;
+		if (!state.enabled) return;
+		if (!event.text.trim() || isCommandInput(event.text)) return;
+
 		state.roundCount += 1;
 		const round = state.roundCount;
 		const cfg = state.config;
@@ -326,7 +338,7 @@ export default function (pi: ExtensionAPI) {
 		}
 		if (!source) return;
 
-		const text = buildUserInputText(ctx);
+		const text = buildUserInputText(ctx, event.text);
 		if (!text.trim()) return;
 		void runGenerate(ctx, source, text);
 	});
@@ -336,9 +348,6 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_compact", (event, ctx) => {
 		if (!isAutoMode(ctx)) return;
 		if (!state.config.onCompact) return;
-		// If the compacted turn will be retried, the following agent_settled should not
-		// also trigger a (duplicate) periodic refresh.
-		state.suppressNextSettled = true;
 		const text = event.compactionEntry.summary;
 		if (!text.trim()) return;
 		void runGenerate(ctx, "compact", text);
@@ -367,7 +376,7 @@ export default function (pi: ExtensionAPI) {
 					[
 						`session enabled: ${state.enabled}`,
 						`current title: ${pi.getSessionName() ?? "(none)"}`,
-						`rounds this session: ${state.roundCount}`,
+						`user inputs this session: ${state.roundCount}`,
 						`model: ${c.model ?? "(current model)"}`,
 						`onFirstTurn: ${c.onFirstTurn}`,
 						`onCompact: ${c.onCompact}`,
