@@ -19,7 +19,7 @@
       "sepRight": " "
     },
     {
-      "left": ["ttft", "tps"],
+      "left": ["ttftAvg", "tpsAvg"],
       "sepLeft": "  ",
       "right": ["todayTok", "todayCost"],
       "sepRight": " "
@@ -166,9 +166,15 @@
     "ttftAvg": {
       "source": "ttft.avg",
       "format": "sec1",
-      "prefix": "(avg ",
-      "suffix": ")",
-      "color": "comment"
+      "nullText": "0.0s",
+      "prefix": "ttft ",
+      "color": {
+        "thresholds": [
+          { "op": "gte", "n": 3000, "color": "red" },
+          { "op": "gte", "n": 1000, "color": "yellow" }
+        ],
+        "default": "green"
+      }
     },
     "tps": {
       "source": "tps",
@@ -180,9 +186,9 @@
     "tpsAvg": {
       "source": "tps.avg",
       "format": "tps1",
-      "prefix": "(avg ",
-      "suffix": ")",
-      "color": "comment"
+      "nullText": "0.0 tok/s",
+      "prefix": "speed ",
+      "color": "cyan"
     },
     "todayTok": {
       "source": "ext-status",
