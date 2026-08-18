@@ -5,6 +5,7 @@
 - 首次用户输入后自动生成标题（`onFirstTurn`）。
 - 压缩后根据摘要重新生成（`onCompact`）。
 - 可每 N 轮刷新一次（`refreshEveryTurns`，0 表示关闭）。
+- 标题上下文会包含每轮 agent 的最终输出（`includeAssistantOutput`，默认开启）。
 - 支持标题语言 `auto` / `zh` / `en`，并可同步到终端标题。
 
 ## 使用
@@ -15,4 +16,4 @@
 
 ## 配置
 
-读取本扩展目录下的 `config.json`；项目级覆盖：`<cwd>/.pi/pi-auto-title.json`（仅受信任项目）。所有字段见 `config.example.json`（`model`、`onFirstTurn`、`onCompact`、`refreshEveryTurns`、`maxTitleLength`、`language`、`setTerminalTitle`）。
+读取本扩展目录下的 `config.json`；项目级覆盖：`<cwd>/.pi/pi-auto-title.json`（仅受信任项目）。所有字段见 `config.example.json`（`model`、`onFirstTurn`、`onCompact`、`refreshEveryTurns`、`maxTitleLength`、`language`、`setTerminalTitle`、`includeAssistantOutput`）。

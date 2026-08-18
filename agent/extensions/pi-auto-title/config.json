@@ -5,5 +5,6 @@
   "refreshEveryTurns": 1,
   "maxTitleLength": 60,
   "language": "auto",
-  "setTerminalTitle": false
+  "setTerminalTitle": false,
+  "includeAssistantOutput": true
 }

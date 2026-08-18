@@ -20,7 +20,8 @@
  *   "refreshEveryTurns": 0,     // 0 = off; N = regenerate every N user inputs
  *   "maxTitleLength": 60,       // truncate title to this length
  *   "language": "auto",         // "auto" | "zh" | "en" (default "auto")
- *   "setTerminalTitle": false   // also set the terminal/tab title (default false)
+ *   "setTerminalTitle": false,  // also set the terminal/tab title (default false)
+ *   "includeAssistantOutput": true // include each turn's final assistant output in title context (default true)
  * }
  *
  * Command:
@@ -57,6 +58,7 @@ interface AutoTitleConfig {
 	maxTitleLength?: number;
 	language?: Language;
 	setTerminalTitle?: boolean;
+	includeAssistantOutput?: boolean;
 }
 
 interface ResolvedConfig {
@@ -67,6 +69,7 @@ interface ResolvedConfig {
 	maxTitleLength: number;
 	language: Language;
 	setTerminalTitle: boolean;
+	includeAssistantOutput: boolean;
 }
 
 const DEFAULTS: ResolvedConfig = {
@@ -77,6 +80,7 @@ const DEFAULTS: ResolvedConfig = {
 	maxTitleLength: 60,
 	language: "auto",
 	setTerminalTitle: false,
+	includeAssistantOutput: true,
 };
 
 type GenSource = "first" | "compact" | "periodic" | "manual";
@@ -110,27 +114,63 @@ function loadConfig(ctx: ExtensionContext): AutoTitleConfig {
 	return merged;
 }
 
-/** Collect every user text message in the current branch, in order. */
-function buildUserInputText(ctx: ExtensionContext, extraText?: string): string {
+/** Extract the text content from a user or assistant message. */
+function extractMessageText(message: SessionMessageEntry["message"]): string {
+	if (!("role" in message) || !("content" in message)) return "";
+	const content = message.content;
+	if (typeof content === "string") return content;
+	return content
+		.filter((block): block is { type: "text"; text: string } => block.type === "text")
+		.map((block) => block.text)
+		.join("\n");
+}
+
+/**
+ * Collect the conversation for title generation.
+ *
+ * Walks the current branch in order and builds user/assistant turn pairs. When
+ * `includeAssistantOutput` is true, each turn also includes the final assistant
+ * text of that turn (tool calls and thinking are ignored).
+ */
+function buildConversationText(
+	ctx: ExtensionContext,
+	includeAssistantOutput: boolean,
+	extraText?: string,
+): string {
 	const branch = ctx.sessionManager.getBranch();
 	const parts: string[] = [];
+	let currentUser: string | null = null;
+	let currentAssistant: string | null = null;
+	let lastUser: string | null = null;
+
+	const flushTurn = () => {
+		if (currentUser === null) return;
+		parts.push(`User: ${currentUser}`);
+		if (includeAssistantOutput && currentAssistant) parts.push(`Assistant: ${currentAssistant}`);
+		currentUser = null;
+		currentAssistant = null;
+	};
+
 	for (const entry of branch) {
 		if (entry.type !== "message") continue;
 		const message: SessionMessageEntry["message"] = entry.message;
-		if (!("role" in message) || message.role !== "user") continue;
-		const text =
-			typeof message.content === "string"
-				? message.content
-				: message.content
-						.filter((block): block is { type: "text"; text: string } => block.type === "text")
-						.map((block) => block.text)
-						.join("\n");
-		const trimmed = text.trim();
-		if (trimmed) parts.push(trimmed);
+		if (!("role" in message)) continue;
+
+		if (message.role === "user") {
+			const text = extractMessageText(message).trim();
+			if (!text) continue;
+			flushTurn();
+			currentUser = text;
+			lastUser = text;
+		} else if (message.role === "assistant") {
+			if (!includeAssistantOutput) continue;
+			currentAssistant = extractMessageText(message).trim();
+		}
 	}
+	flushTurn();
 
 	const extra = extraText?.trim();
-	if (extra && parts[parts.length - 1] !== extra) parts.push(extra);
+	if (extra && lastUser !== extra) parts.push(`User: ${extra}`);
 	return parts.join("\n\n");
 }
 
@@ -338,7 +378,7 @@ export default function (pi: ExtensionAPI) {
 		}
 		if (!source) return;
 
-		const text = buildUserInputText(ctx, event.text);
+		const text = buildConversationText(ctx, cfg.includeAssistantOutput, event.text);
 		if (!text.trim()) return;
 		void runGenerate(ctx, source, text);
 	});
@@ -384,6 +424,7 @@ export default function (pi: ExtensionAPI) {
 						`maxTitleLength: ${c.maxTitleLength}`,
 						`language: ${c.language}`,
 						`setTerminalTitle: ${c.setTerminalTitle}`,
+						`includeAssistantOutput: ${c.includeAssistantOutput}`,
 					].join("\n"),
 					"info",
 				);
@@ -392,7 +433,7 @@ export default function (pi: ExtensionAPI) {
 
 			// default / "regen" / "gen" / "now" -> regenerate immediately
 			reloadConfig(ctx);
-			const text = buildUserInputText(ctx);
+			const text = buildConversationText(ctx, state.config.includeAssistantOutput);
 			if (!text.trim()) {
 				notify(ctx, "pi-auto-title: no conversation to title yet", "warning");
 				return;
