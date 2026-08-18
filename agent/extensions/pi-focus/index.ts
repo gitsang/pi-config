@@ -13,6 +13,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import * as piTui from "@earendil-works/pi-tui";
 
 const FOCUS_CHANNEL = "pi-focus:change";
 
@@ -24,6 +25,15 @@ function write1004(enable: boolean): void {
 	try { process.stdout.write(enable ? "\x1b[?1004h" : "\x1b[?1004l"); } catch { /* ignore */ }
 }
 
+function syncTerminalFocused(next: boolean): void {
+	try {
+		// pi-tui exports this in current builds; guard for older cached modules
+		// so an outdated running process can still reload without crashing.
+		const set = (piTui as unknown as { setTerminalFocused?: (focused: boolean) => void }).setTerminalFocused;
+		set?.(next);
+	} catch { /* ignore */ }
+}
+
 function stop(): void {
 	if (inputUnsub) {
 		inputUnsub();
@@ -31,6 +41,8 @@ function stop(): void {
 	}
 	if (active) write1004(false);
 	active = false;
+	// Reset the TUI cursor to the focused state when the session/listener stops.
+	syncTerminalFocused(true);
 }
 
 export default function (pi: ExtensionAPI): void {
@@ -41,6 +53,7 @@ export default function (pi: ExtensionAPI): void {
 	const start = (ctx: ExtensionContext): void => {
 		stop();
 		focused = true; // DEC 1004 reports changes, not a guaranteed initial state.
+		syncTerminalFocused(true);
 		active = ctx.mode === "tui";
 		if (!active) return;
 
@@ -49,6 +62,7 @@ export default function (pi: ExtensionAPI): void {
 			const next = data === "\x1b[I";
 			if (next !== focused) {
 				focused = next;
+				syncTerminalFocused(next);
 				emitFocus();
 			}
 			return { consume: true };
