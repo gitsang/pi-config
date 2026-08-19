@@ -383,6 +383,8 @@ interface Item {
 	text: string;
 	// present when the module opts into truncate: "start"
 	truncateFromStart?: boolean;
+	// present when the module explicitly opts into truncate: "end"
+	truncateFromEnd?: boolean;
 	plainBody?: string;
 	color?: string;
 	glyphPart?: string;
@@ -404,6 +406,7 @@ function buildItems(names: string[] | undefined, sc: SourceContext, cfg: Statusl
 			item.color = r.parts.color;
 			item.glyphPart = r.parts.glyphPart;
 		}
+		if (mc?.truncate === "end") item.truncateFromEnd = true;
 		return item;
 	});
 }
@@ -469,7 +472,9 @@ function fitLine(items: Item[], width: number, itemSp: string, groupSp: string):
 	const live = items.filter((it) => visibleWidth(it.text) > 0);
 	const liveSet = new Set(live.map((it) => it.key));
 	if (itemsWidth(live, liveSet, itemSp, groupSp) <= width) return renderItems(live, liveSet, itemSp, groupSp);
-	const droppable = live.filter((it) => it.pri < 90).sort((a, b) => a.pri - b.pri);
+	// Items that opt into end-truncation are kept and ellipsized instead of
+	// being dropped when the line overflows.
+	const droppable = live.filter((it) => it.pri < 90 && !it.truncateFromEnd).sort((a, b) => a.pri - b.pri);
 	const kept = new Set(liveSet);
 	for (const it of droppable) {
 		kept.delete(it.key);
@@ -510,7 +515,12 @@ function splitLine(
 			}
 		}
 	}
-	const droppable = [...lLive.filter((it) => it.pri < 90), ...rLive.filter((it) => it.pri < 90)].sort((a, b) => a.pri - b.pri);
+	// Items that opt into end-truncation are kept and ellipsized instead of
+	// being dropped when the line overflows.
+	const droppable = [
+		...lLive.filter((it) => it.pri < 90 && !it.truncateFromEnd),
+		...rLive.filter((it) => it.pri < 90 && !it.truncateFromEnd),
+	].sort((a, b) => a.pri - b.pri);
 	const lKept = new Set(lAll);
 	const rKept = new Set(rAll);
 	for (const it of droppable) {

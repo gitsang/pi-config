@@ -55,7 +55,8 @@
     },
     "title": {
       "source": "session.name",
-      "color": "yellow"
+      "color": "yellow",
+      "truncate": "end"
     },
     "branch": {
       "source": "footer.branch",

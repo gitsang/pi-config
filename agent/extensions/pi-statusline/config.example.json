@@ -50,7 +50,8 @@
     },
     "title": {
       "source": "session.name",
-      "color": "comment"
+      "color": "comment",
+      "truncate": "end"
     },
     "branch": {
       "source": "footer.branch",
