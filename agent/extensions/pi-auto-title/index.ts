@@ -223,13 +223,13 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		if (ctx.mode !== "tui") {
-			ctx.ui.setStatus(STATUS_KEY, `${SPINNER_FRAMES[0]!} Generating Title...`);
+			ctx.ui.setStatus(STATUS_KEY, `${SPINNER_FRAMES[0]!}`);
 			return;
 		}
 
 		let frame = 0;
 		const render = () => {
-			ctx.ui.setStatus(STATUS_KEY, `${SPINNER_FRAMES[frame]!} Generating Title...`);
+			ctx.ui.setStatus(STATUS_KEY, `${SPINNER_FRAMES[frame]!}`);
 			frame = (frame + 1) % SPINNER_FRAMES.length;
 		};
 		render();
