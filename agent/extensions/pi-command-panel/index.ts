@@ -442,6 +442,11 @@ async function openPanel(
 ): Promise<void> {
   const items = buildItems(pi);
   const draft = ctx.ui.getEditorText();
+  // Ctrl+P (and /panel) should not wipe the user's in-progress editor text.
+  // The preserved text is only a visual starting point — it must not act as
+  // the panel filter. Only text typed after the panel opens filters the list.
+  const initial = initialText === "" ? draft : initialText;
+  const queryBase = initial;
   let capturedTui: TuiLike | null = null;
 
   const action = await new Promise<PanelAction>((resolve) => {
@@ -478,6 +483,15 @@ async function openPanel(
           resolve(item ? { name: item.name, commandText } : null);
         };
 
+        const queryFromEditor = (): string => {
+          const text = editor.getText();
+          // Only text appended after the preserved base text counts as filter
+          // input. Deleting into the base text keeps the query empty.
+          if (text.startsWith(queryBase)) return text.slice(queryBase.length);
+          if (queryBase.startsWith(text)) return "";
+          return text;
+        };
+
         const syncFromEditor = (): void => {
           const query = editor.getText();
           // Suppress pi's slash-command popup while the panel owns command-name
@@ -485,7 +499,7 @@ async function openPanel(
           if (/^\/[^\s]*$/.test(query) && editor.isShowingAutocomplete()) {
             editor.setText(query);
           }
-          panel.setQuery(query);
+          panel.setQuery(queryFromEditor());
           tui.requestRender();
         };
 
@@ -503,7 +517,7 @@ async function openPanel(
         removeInputListener = tui.addInputListener((data) => {
           // Previous keystrokes may have been delivered in the same event-loop
           // batch, before their queued post-editor sync had a chance to run.
-          panel.setQuery(editor.getText());
+          panel.setQuery(queryFromEditor());
 
           const kb = getKeybindings();
           const argumentAutocompleteOwnsKey =
@@ -525,8 +539,8 @@ async function openPanel(
           return undefined;
         });
 
-        ctx.ui.setEditorText(initialText);
-        panel.setQuery(initialText);
+        ctx.ui.setEditorText(initial);
+        panel.setQuery(queryFromEditor());
         tui.setFocus(editor);
         return panel;
       },
