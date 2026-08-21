@@ -1,0 +1,70 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            asset: pi-webui-linux-amd64.tar.gz
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            asset: pi-webui-linux-arm64.tar.gz
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            asset: pi-webui-macos-amd64.tar.gz
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            asset: pi-webui-macos-arm64.tar.gz
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build Go binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: go build -o pi-webui ./cmd/pi-webui
+
+      - name: Stage tarball
+        run: |
+          mkdir -p staging
+          cp pi-webui staging/pi-webui
+          cp -r dist staging/dist
+          tar -czf "${{ matrix.asset }}" -C staging .
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset }}
+          draft: false
+          prerelease: false

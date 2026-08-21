@@ -417,3 +417,11 @@ export default function (pi: ExtensionAPI) {
 ## 11. 实现备注
 
 （实现者在开发过程中发现的偏差、补充决策记录在此。）
+
+### 第一版实现备注（基于本 handoff 实现）
+
+- 仓库结构适配：当前目录同时作为 pi 扩展目录和 Go 项目根；扩展入口为 `index.ts`（handoff 中为仓库根 `extensions/index.ts`）。
+- 导入会话时，pi 对 bare session id 的 `--session <id>` 解析不稳定，改为传会话文件绝对路径（`--session <sessionFile>`）。
+- 实际 pi RPC 的 `message_update` 事件形态为 `{usage, assistantMessageEvent:{type, contentIndex, delta, content}}`，前端同时兼容 handoff 中描述的简化形态 `{contentIndex, delta, kind}`。
+- 新会话创建后，pi 在首条消息落盘前不会生成 session JSONL 文件；因此「最近会话」列表只包含磁盘上已有文件的会话。
+- Cookie 签名密钥由 passwordHash 派生，修改密码会使已登录 Cookie 失效。
