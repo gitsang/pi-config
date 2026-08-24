@@ -765,21 +765,33 @@ function App({
         )}
 
         <footer className="composer">
-          <Input.TextArea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void handleSend();
-              }
-            }}
-            placeholder={busy ? "流式中：Enter 发送 steering 消息" : "输入消息（Enter 发送，Shift+Enter 换行）"}
-            autoSize={{ minRows: 2, maxRows: 8 }}
-          />
-          <Button type="primary" icon={<SendOutlined />} onClick={handleSend} disabled={!activeBsid || !input.trim()}>
-            发送
-          </Button>
+          <div className="composer-card">
+            <Input.TextArea
+              className="composer-textarea"
+              variant="borderless"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void handleSend();
+                }
+              }}
+              placeholder={busy ? "流式中：Enter 发送 steering 消息" : "输入消息（Enter 发送，Shift+Enter 换行）"}
+              autoSize={{ minRows: 2, maxRows: 8 }}
+            />
+            <div className="composer-actions">
+              <Button
+                type="primary"
+                shape="round"
+                icon={<SendOutlined />}
+                onClick={handleSend}
+                disabled={!activeBsid || !input.trim()}
+              >
+                发送
+              </Button>
+            </div>
+          </div>
         </footer>
       </Layout>
     </Layout>
