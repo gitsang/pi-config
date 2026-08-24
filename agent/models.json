@@ -361,10 +361,10 @@
           "input": ["text", "image"],
           "reasoning": true,
           "cost": {
-            "input": 0,
-            "output": 0,
-            "cacheRead": 0,
-            "cacheWrite": 0
+            "input": 0.5,
+            "output": 3,
+            "cacheRead": 0.1,
+            "cacheWrite": 0.625
           }
         }
       ]
