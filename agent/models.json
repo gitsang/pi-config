@@ -348,6 +348,26 @@
           }
         }
       ]
+    },
+    "mac": {
+      "baseUrl": "http://10.120.1.165:8000/v1",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "qwen3.8-27b-4bit",
+          "name": "Qwen3.8 27B",
+          "contextWindow": 200000,
+          "maxTokens": 65536,
+          "input": ["text", "image"],
+          "reasoning": true,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        }
+      ]
     }
   }
 }

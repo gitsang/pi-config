@@ -1,9 +1,11 @@
 {
   "lastChangelogVersion": "0.84.2",
   "theme": "dark",
-  "defaultProvider": "saigw",
-  "defaultModel": "deepseek-v4-pro",
+  "defaultProvider": "mac",
+  "defaultModel": "qwen3.8-27b",
   "defaultThinkingLevel": "max",
   "hideThinkingBlock": false,
-  "packages": []
+  "packages": [
+    "https://github.com/cathrynlavery/diagram-design"
+  ]
 }
