@@ -12,6 +12,7 @@ import {
   Layout,
   List,
   Modal,
+  Segmented,
   Select,
   Space,
   Spin,
@@ -23,6 +24,7 @@ import {
 import {
   CloseOutlined,
   EditOutlined,
+  LaptopOutlined,
   LogoutOutlined,
   MoonOutlined,
   PlusOutlined,
@@ -35,7 +37,8 @@ import zhCN from "antd/locale/zh_CN";
 import { api, UnauthorizedError } from "./api";
 import type { ChatMessage, PiModel, PiState, SessionSummary, ToolCard } from "./types";
 
-type ThemeMode = "light" | "dark";
+type ThemePreference = "light" | "dark" | "system";
+type ResolvedTheme = "light" | "dark";
 const THEME_STORAGE_KEY = "pi-webui-theme";
 
 interface AssistantEvent {
@@ -48,39 +51,62 @@ interface AssistantEvent {
   messageId?: string;
 }
 
-function AppRoot() {
-  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
-    const saved = localStorage.getItem(THEME_STORAGE_KEY);
-    if (saved === "light" || saved === "dark") return saved;
+function resolveTheme(preference: ThemePreference): ResolvedTheme {
+  if (preference === "system") {
     return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  return preference;
+}
+
+function AppRoot() {
+  const [themePreference, setThemePreference] = useState<ThemePreference>(() => {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved === "light" || saved === "dark" || saved === "system") return saved;
+    return "system";
   });
 
+  const resolvedTheme = resolveTheme(themePreference);
+
   useEffect(() => {
-    localStorage.setItem(THEME_STORAGE_KEY, themeMode);
-    document.documentElement.style.colorScheme = themeMode;
-  }, [themeMode]);
+    localStorage.setItem(THEME_STORAGE_KEY, themePreference);
+    document.documentElement.style.colorScheme = resolvedTheme;
+    document.documentElement.dataset.theme = resolvedTheme;
+    document.body.dataset.theme = resolvedTheme;
+  }, [themePreference, resolvedTheme]);
+
+  const antdTheme = {
+    algorithm: resolvedTheme === "dark" ? theme.darkAlgorithm : theme.defaultAlgorithm,
+    token: {
+      borderRadius: 10,
+      colorPrimary: resolvedTheme === "dark" ? "#679efe" : "#4176e6",
+      colorInfo: resolvedTheme === "dark" ? "#679efe" : "#4176e6",
+      fontFamily:
+        '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif',
+    },
+  };
 
   return (
-    <ConfigProvider
-      locale={zhCN}
-      theme={{
-        algorithm: themeMode === "dark" ? theme.darkAlgorithm : theme.defaultAlgorithm,
-        token: {
-          borderRadius: 8,
-          fontFamily:
-            '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif',
-        },
-      }}
-    >
+    <ConfigProvider locale={zhCN} theme={antdTheme}>
       <AntApp>
-        <App themeMode={themeMode} onToggleTheme={() => setThemeMode((m) => (m === "dark" ? "light" : "dark"))} />
+        <App
+          themePreference={themePreference}
+          resolvedTheme={resolvedTheme}
+          onThemePreferenceChange={setThemePreference}
+        />
       </AntApp>
     </ConfigProvider>
   );
 }
 
-function App({ themeMode, onToggleTheme }: { themeMode: ThemeMode; onToggleTheme: () => void }) {
-  const { token } = theme.useToken();
+function App({
+  themePreference,
+  resolvedTheme,
+  onThemePreferenceChange,
+}: {
+  themePreference: ThemePreference;
+  resolvedTheme: ResolvedTheme;
+  onThemePreferenceChange: (preference: ThemePreference) => void;
+}) {
   const { message } = AntApp.useApp();
 
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
@@ -106,23 +132,6 @@ function App({ themeMode, onToggleTheme }: { themeMode: ThemeMode; onToggleTheme
   const sseRef = useRef<EventSource | null>(null);
   const openedOnceRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    root.style.setProperty("--pi-bg", token.colorBgLayout);
-    root.style.setProperty("--pi-panel", token.colorBgContainer);
-    root.style.setProperty("--pi-panel-raised", token.colorBgElevated);
-    root.style.setProperty("--pi-border", token.colorBorderSecondary);
-    root.style.setProperty("--pi-text", token.colorText);
-    root.style.setProperty("--pi-text-secondary", token.colorTextSecondary);
-    root.style.setProperty("--pi-primary", token.colorPrimary);
-    root.style.setProperty("--pi-primary-bg", token.colorPrimaryBg);
-    root.style.setProperty("--pi-primary-border", token.colorPrimaryBorder);
-    root.style.setProperty("--pi-success", token.colorSuccess);
-    root.style.setProperty("--pi-error", token.colorError);
-    root.style.setProperty("--pi-code-bg", token.colorFillTertiary);
-    root.style.setProperty("--pi-warning", token.colorWarning);
-  }, [token]);
 
   useEffect(() => {
     api
@@ -602,19 +611,9 @@ function App({ themeMode, onToggleTheme }: { themeMode: ThemeMode; onToggleTheme
             <Typography.Title level={4} style={{ margin: 0 }}>
               pi-webui
             </Typography.Title>
-            <Space size={4}>
-              <Tooltip title={themeMode === "dark" ? "切换亮色主题" : "切换暗色主题"}>
-                <Button
-                  type="text"
-                  aria-label="切换主题"
-                  icon={themeMode === "dark" ? <SunOutlined /> : <MoonOutlined />}
-                  onClick={onToggleTheme}
-                />
-              </Tooltip>
-              <Tooltip title="退出登录">
-                <Button type="text" aria-label="退出登录" icon={<LogoutOutlined />} onClick={handleLogout} />
-              </Tooltip>
-            </Space>
+            <Tooltip title="退出登录">
+              <Button type="text" aria-label="退出登录" icon={<LogoutOutlined />} onClick={handleLogout} />
+            </Tooltip>
           </div>
 
           <Space.Compact className="new-session">
@@ -641,6 +640,23 @@ function App({ themeMode, onToggleTheme }: { themeMode: ThemeMode; onToggleTheme
               刷新
             </Button>
           </Space.Compact>
+
+          <div className="theme-row">
+            <Typography.Text type="secondary" className="theme-label">
+              外观
+            </Typography.Text>
+            <Segmented
+              size="small"
+              block
+              value={themePreference}
+              onChange={(value) => onThemePreferenceChange(value as ThemePreference)}
+              options={[
+                { value: "light", label: "浅色", icon: <SunOutlined /> },
+                { value: "dark", label: "深色", icon: <MoonOutlined /> },
+                { value: "system", label: "系统", icon: <LaptopOutlined /> },
+              ]}
+            />
+          </div>
 
           <div className="session-list">
             <List
