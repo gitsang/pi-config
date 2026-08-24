@@ -605,7 +605,7 @@ function App({
 
   return (
     <Layout className="app-layout">
-      <Layout.Sider width={340} theme="light" className="sidebar">
+      <Layout.Sider width={280} theme="light" className="sidebar">
         <div className="sidebar-inner">
           <div className="sidebar-header">
             <Typography.Title level={4} style={{ margin: 0 }}>
@@ -736,19 +736,21 @@ function App({
         </Layout.Header>
 
         <Layout.Content className="transcript">
-          {messages.map((msg, i) => (
-            <MessageView key={msg.id ?? msg.timestamp ?? i} message={msg} />
-          ))}
-          {toolCards.map((card) => (
-            <ToolCardView key={card.toolCallId} card={card} />
-          ))}
-          {busy && (
-            <div className="busy">
-              <Spin size="small" />
-              <span>正在思考…</span>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
+          <div className="transcript-column">
+            {messages.map((msg, i) => (
+              <MessageView key={msg.id ?? msg.timestamp ?? i} message={msg} />
+            ))}
+            {toolCards.map((card) => (
+              <ToolCardView key={card.toolCallId} card={card} />
+            ))}
+            {busy && (
+              <div className="busy">
+                <Spin size="small" />
+                <span>正在思考…</span>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
         </Layout.Content>
 
         {error && (
