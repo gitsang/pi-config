@@ -19,7 +19,7 @@
       "sepRight": " "
     },
     {
-      "left": ["ttftAvg", "tpsAvg"],
+      "left": ["elapsed", "ttftAvg", "tpsAvg"],
       "sepLeft": "  ",
       "right": ["todayTok", "todayCost"],
       "sepRight": " "
@@ -121,6 +121,13 @@
       "glyph": "\uef8d",
       "format": "dollars3",
       "color": "orange"
+    },
+    "elapsed": {
+      "source": "task.elapsed",
+      "format": "sec0",
+      "nullText": "0s",
+      "prefix": "elapsed ",
+      "color": "yellow"
     },
     "ctxLabel": {
       "source": "literal",
@@ -229,6 +236,7 @@
     "cacheW": 40,
     "cacheHit": 45,
     "cost": 70,
+    "elapsed": 95,
     "ctxLabel": 100,
     "ctxBar": 60,
     "ctxPct": 95,

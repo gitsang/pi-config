@@ -3,8 +3,8 @@
  *
  * Fully config-driven. Zero config = the default 4-line footer (preserved
  * behavior). Data sources are a fixed registry (cwd, model, usage, ctx, ttft,
- * tps, thinking, branch, title, ext-status, literal). New read-only sources
- * can be added to the registry; the TTFT/TPS sources are stateful and built-in.
+ * tps, task.elapsed, thinking, branch, title, ext-status, literal). New read-only
+ * sources can be added to the registry; the TTFT/TPS/task-elapsed sources are stateful and built-in.
  *
  * CROSS-EXTENSION (no coupling): an external extension "registers" a statusline
  * source by calling ctx.ui.setStatus(key, value). pi-statusline reads it via
@@ -22,7 +22,7 @@
  *
  * Commands:
  *   /statusline          toggle footer on/off (no arg) | "reload" reloads config
- *   /statusline-reset    reset TTFT/TPS history
+ *   /statusline-reset    reset TTFT/TPS/task-elapsed history
  */
 
 import {
@@ -174,7 +174,7 @@ const DEFAULT_RAW: RawConfig = {
 			right: ["ctxLabel", "ctxBar", "ctxPct", "ctxNums"],
 			sepLeft: "  ", sepRight: " ",
 		},
-		{ full: ["ttft", "ttftAvg", "tps", "tpsAvg"], sep: "  " },
+		{ full: ["elapsed", "ttft", "ttftAvg", "tps", "tpsAvg"], sep: "  " },
 	],
 	modules: {
 		cwd: { source: "session.cwd", color: "fg", truncate: "start" },
@@ -192,6 +192,13 @@ const DEFAULT_RAW: RawConfig = {
 		cacheW: { source: "usage.cacheWrite", glyph: "\udb84\ude59", format: "tok", color: "purple" },
 		cacheHit: { source: "usage.ch", glyph: "\uf49b", format: "pct", nullText: "0%", color: "yellow" },
 		cost: { source: "usage.cost", glyph: "\uef8d", format: "dollars3", color: "orange" },
+		elapsed: {
+			source: "task.elapsed",
+			format: "sec0",
+			nullText: "0s",
+			prefix: "elapsed ",
+			color: "yellow",
+		},
 		ctxLabel: { source: "literal", text: "ctx", color: "comment" },
 		ctxBar: {
 			source: "ctx.bar", cells: 8,
@@ -214,6 +221,7 @@ const DEFAULT_RAW: RawConfig = {
 	priority: {
 		cwd: 100, branch: 60, title: 30, model: 95, thinking: 40, stier: 35,
 		tokIn: 100, tokOut: 95, cacheR: 50, cacheW: 40, cacheHit: 45, cost: 70,
+		elapsed: 95,
 		ctxLabel: 100, ctxBar: 60, ctxPct: 95, ctxNums: 40,
 		ttft: 100, ttftAvg: 40, tps: 95, tpsAvg: 30,
 	},
@@ -276,6 +284,7 @@ interface SourceContext {
 	ctxUsage: any;
 	timing: { ttft: number | null; tps: number | null };
 	timingAvg: { ttft: number | null; tps: number | null };
+	task: { elapsed: number | null };
 }
 
 function fetchSource(source: string, sc: SourceContext, mc: ModuleConfig): any {
@@ -303,6 +312,7 @@ function fetchSource(source: string, sc: SourceContext, mc: ModuleConfig): any {
 		case "ttft.avg": return sc.timingAvg.ttft;
 		case "tps": return sc.timing.tps;
 		case "tps.avg": return sc.timingAvg.tps;
+		case "task.elapsed": return sc.task.elapsed;
 		case "ext-status": return sc.footerData?.getExtensionStatuses?.()?.get(mc.key ?? "") ?? null;
 		case "literal": return mc.text ?? "";
 		case "focus": return focusState();
@@ -339,6 +349,7 @@ function formatValue(format: string | undefined, raw: any, nullText: string | un
 	switch (format) {
 		case "tok": return fmtTok(num);
 		case "pct": return `${Math.round(num)}%`;
+		case "sec0": return `${Math.round(num / 1000)}s`;
 		case "sec1": return `${(num / 1000).toFixed(1)}s`;
 		case "tps1": return `${num.toFixed(1)} tok/s`;
 		case "dollars3": return `$${num.toFixed(3)}`;
@@ -548,6 +559,11 @@ let lastTiming: { ttft: number | null; tps: number | null } = { ttft: null, tps:
 const tpsHistory: number[] = [];
 const ttftHistory: number[] = [];
 
+// ─── task elapsed timing state ───────────────────────────────────────────────
+let taskStartedAt: number | null = null;
+let lastTaskElapsedMs: number | null = null;
+let elapsedTicker: ReturnType<typeof setInterval> | null = null;
+
 function computeUsage(ctx: any) {
 	let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, cost = 0;
 	try {
@@ -571,7 +587,8 @@ function buildSourceContext(ctx: any, footerData: any): SourceContext {
 	const ctxUsage = ctx.getContextUsage();
 	const ttftAvg = ttftHistory.length ? ttftHistory.reduce((a, b) => a + b, 0) / ttftHistory.length : null;
 	const tpsAvg = tpsHistory.length ? tpsHistory.reduce((a, b) => a + b, 0) / tpsHistory.length : null;
-	return { ctx, footerData, model: ctx.model, usage, ctxUsage, timing: lastTiming, timingAvg: { ttft: ttftAvg, tps: tpsAvg } };
+	const taskElapsed = taskStartedAt !== null ? Date.now() - taskStartedAt : lastTaskElapsedMs;
+	return { ctx, footerData, model: ctx.model, usage, ctxUsage, timing: lastTiming, timingAvg: { ttft: ttftAvg, tps: tpsAvg }, task: { elapsed: taskElapsed } };
 }
 
 // ─── render ──────────────────────────────────────────────────────────────────
@@ -610,6 +627,31 @@ function renderFooter(ctx: any, footerData: any, width: number): string[] {
 let enabled = false;
 let requestRender: (() => void) | undefined;
 
+function startElapsedTicker(): void {
+	if (elapsedTicker) return;
+	elapsedTicker = setInterval(() => requestRender?.(), 1000);
+	if (typeof elapsedTicker.unref === "function") elapsedTicker.unref();
+}
+
+function stopElapsedTicker(): void {
+	if (!elapsedTicker) return;
+	clearInterval(elapsedTicker);
+	elapsedTicker = null;
+}
+
+function beginTaskTiming(): void {
+	if (taskStartedAt === null) taskStartedAt = Date.now();
+	startElapsedTicker();
+	requestRender?.();
+}
+
+function finishTaskTiming(): void {
+	if (taskStartedAt !== null) lastTaskElapsedMs = Date.now() - taskStartedAt;
+	taskStartedAt = null;
+	stopElapsedTicker();
+	requestRender?.();
+}
+
 // ─── focus subscription ─────────────────────────────────────────────────────
 // The standalone pi-focus extension is the sole DEC 1004 owner. This extension
 // only subscribes to its event bus channel, avoiding terminal-input races.
@@ -642,6 +684,9 @@ export default function (pi: ExtensionAPI): void {
 		if (next !== focused) { focused = next; requestRender?.(); }
 	});
 
+	pi.on("agent_start", beginTaskTiming);
+	pi.on("agent_settled", finishTaskTiming);
+
 	pi.on("before_provider_request", () => { requestStart = Date.now(); });
 	pi.on("message_start", () => { msgStart = requestStart; firstToken = null; });
 	pi.on("message_update", (e: any) => {
@@ -666,8 +711,16 @@ export default function (pi: ExtensionAPI): void {
 	pi.on("model_select", () => requestRender?.());
 
 	pi.on("session_start", (_e, ctx: ExtensionContext) => {
+		stopElapsedTicker();
+		taskStartedAt = null;
+		lastTaskElapsedMs = null;
 		activeConfig = loadConfig(ctx);
 		if (enabled && ctx.mode === "tui") setupFooter(ctx);
+	});
+
+	pi.on("session_shutdown", () => {
+		stopElapsedTicker();
+		taskStartedAt = null;
 	});
 
 	pi.registerCommand("statusline", {
@@ -702,11 +755,12 @@ export default function (pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("statusline-reset", {
-		description: "Reset TTFT/TPS history",
+		description: "Reset TTFT/TPS/task-elapsed history",
 		handler: async (_args, ctx) => {
 			lastTiming = { ttft: null, tps: null };
 			tpsHistory.length = 0;
 			ttftHistory.length = 0;
+			lastTaskElapsedMs = null;
 			ctx.ui.notify("statusline timing history reset", "info");
 			requestRender?.();
 		},
