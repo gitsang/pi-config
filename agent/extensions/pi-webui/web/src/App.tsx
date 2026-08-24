@@ -745,8 +745,8 @@ function App({
             ))}
             {busy && (
               <div className="busy">
-                <Spin size="small" />
-                <span>正在思考…</span>
+                <span className="busy-text">正在思考</span>
+                <span className="busy-ellipsis">…</span>
               </div>
             )}
             <div ref={messagesEndRef} />

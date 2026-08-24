@@ -121,6 +121,27 @@ body {
   transition: background-color 0.2s var(--pi-ease), color 0.2s var(--pi-ease);
 }
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--pi-border-l2) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  background-clip: content-box;
+  background-color: var(--pi-border-l2);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--pi-text-caption);
+}
+
 pre {
   margin: 0;
 }
@@ -136,6 +157,20 @@ pre {
 .login-card {
   width: 360px;
   max-width: 100%;
+  border-radius: 22px;
+}
+
+.login-card .ant-card-head {
+  border-bottom: none;
+}
+
+.login-card .ant-input-affix-wrapper {
+  border-radius: 22px;
+  padding: 7px 14px;
+}
+
+.login-card .ant-btn {
+  border-radius: 999px;
 }
 
 .app-layout {
@@ -168,6 +203,13 @@ pre {
   margin-bottom: 8px;
   box-sizing: border-box;
   overflow: hidden;
+}
+
+.sidebar-header .ant-typography {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+  letter-spacing: 0.04em;
 }
 
 .new-session,
@@ -245,15 +287,23 @@ pre {
 .topbar {
   height: auto !important;
   min-height: 56px;
-  padding: 10px 16px !important;
+  padding: 12px 28px 0 20px !important;
   line-height: 1.5 !important;
-  background: var(--pi-panel, #ffffff) !important;
-  border-bottom: 1px solid var(--pi-border, #e5e7eb);
+  background: var(--pi-bg) !important;
+  border-bottom: 1px solid var(--pi-border-l1);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.topbar-controls .ant-btn {
+  border-radius: 999px;
+}
+
+.topbar-select .ant-select-selector {
+  border-radius: 999px !important;
 }
 
 .topbar-title {
@@ -453,11 +503,52 @@ pre {
 
 /* ---------- Busy / banner / composer ---------- */
 .busy {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  color: var(--pi-primary, #1677ff);
-  font-size: 13px;
+  align-self: flex-start;
+  gap: 2px;
+  height: 26px;
+  font-size: 14px;
+  line-height: 24px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.busy-text {
+  background: linear-gradient(
+    90deg,
+    var(--pi-blue-500) 0%,
+    var(--pi-blue-500) 40%,
+    var(--pi-blue-200) 50%,
+    var(--pi-blue-500) 60%,
+    var(--pi-blue-500) 100%
+  );
+  background-position: 100% 0;
+  background-size: 250% 100%;
+  background-clip: text;
+  color: transparent;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: pi-busy-shimmer 1.8s linear infinite;
+}
+
+.busy-ellipsis {
+  color: var(--pi-text-caption);
+  -webkit-text-fill-color: var(--pi-text-caption);
+}
+
+@keyframes pi-busy-shimmer {
+  to {
+    background-position: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .busy-text {
+    background-position: 0 0;
+    background-size: 100% 100%;
+    animation: none;
+  }
 }
 
 .banner {
