@@ -123,10 +123,10 @@
       "color": "orange"
     },
     "elapsed": {
-      "source": "task.elapsed",
+      "source": "task.elapsedTotal",
+      "glyph": "\uf520",
       "format": "sec0",
       "nullText": "0s",
-      "prefix": "elapsed ",
       "color": "yellow"
     },
     "ctxLabel": {
@@ -173,13 +173,13 @@
     },
     "ttftAvg": {
       "source": "ttft.avg",
+      "glyph": "\uf4e3",
       "format": "sec1",
       "nullText": "0.0s",
-      "prefix": "ttft ",
       "color": {
         "thresholds": [
-          { "op": "gte", "n": 3000, "color": "red" },
-          { "op": "gte", "n": 1000, "color": "yellow" }
+          { "op": "gte", "n": 30000, "color": "red" },
+          { "op": "gte", "n": 10000, "color": "yellow" }
         ],
         "default": "green"
       }
@@ -193,9 +193,9 @@
     },
     "tpsAvg": {
       "source": "tps.avg",
+      "glyph": "\udb81\udcc5",
       "format": "tps1",
       "nullText": "0.0 tok/s",
-      "prefix": "speed ",
       "color": "cyan"
     },
     "todayTok": {

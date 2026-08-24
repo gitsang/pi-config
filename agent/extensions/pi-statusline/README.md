@@ -18,6 +18,6 @@ Precedence (later overrides earlier):
 2. `config.json` next to this extension
 3. `<cwd>/.pi/pi-statusline.json` (trusted projects only)
 
-Configs deep-merge over built-in defaults. Define `lines` and `modules`; modules use sources such as `session.cwd`, `model`, `thinking`, `usage.*`, `ctx.*`, `task.elapsed`, `ttft`, `tps`, `focus`, `ext-status`, and `literal`. See `config.example.json` for the full template.
+Configs deep-merge over built-in defaults. Define `lines` and `modules`; modules use sources such as `session.cwd`, `model`, `thinking`, `usage.*`, `ctx.*`, `task.elapsed`, `task.elapsedTotal`, `ttft`, `tps`, `focus`, `ext-status`, and `literal`. See `config.example.json` for the full template.
 
 tmux users: add `set -g focus-events on` for focus module updates.

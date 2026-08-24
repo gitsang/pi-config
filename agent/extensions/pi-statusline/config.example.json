@@ -1,5 +1,5 @@
 {
-  "_comment": "pi-statusline config. Precedence (later overrides earlier): global ~/.pi/agent/pi-statusline.json < extension ./config.json (this dir) < project <cwd>/.pi/pi-statusline.json (trusted). Partial configs deep-merge over the built-in default. Zero config = default 4-line footer. Sources: session.cwd|session.name, footer.branch, model.id, thinking, usage.input|output|cacheRead|cacheWrite|ch|cost, ctx.percent|tokens|window|nums|bar, ttft|ttft.avg, tps|tps.avg, task.elapsed, focus, ext-status (key), literal (text). color: 'name' | {map:{val->name},default} | {thresholds:[{op,n,color}],default}. Palette: fg fgDark comment dark5 blue cyan blue5 magenta purple orange yellow green green1 red, or raw 'R;G;B'. format: tok pct sec0 sec1 tps1 dollars3 int raw. valueMap maps raw values to display text or icons while color.map still matches the raw value. truncate: 'start'|'end' (default 'end') — which side to ellipsis when a single-item side overflows; 'start' keeps the tail (e.g. cwd -> '…/pi-statusline'). Use /statusline reload after edits. FOCUS: {enabled, dimUnfocused, unfocusedColor} — subscribes to the standalone pi-focus extension on 'pi-focus:change'; pi-focus is the sole DEC 1004 owner. When dimUnfocused, the whole footer is recolored to unfocusedColor on blur so the focused pane stands out. The `focus` source returns 'focused'|'unfocused' for indicator modules (see focusDot). tmux users: add `set -g focus-events on` or pane switches won't report. /statusline focus shows current state and whether a pi-focus event has been seen.",
+  "_comment": "pi-statusline config. Precedence (later overrides earlier): global ~/.pi/agent/pi-statusline.json < extension ./config.json (this dir) < project <cwd>/.pi/pi-statusline.json (trusted). Partial configs deep-merge over the built-in default. Zero config = default 4-line footer. Sources: session.cwd|session.name, footer.branch, model.id, thinking, usage.input|output|cacheRead|cacheWrite|ch|cost, ctx.percent|tokens|window|nums|bar, ttft|ttft.avg, tps|tps.avg, task.elapsed|task.elapsedTotal, focus, ext-status (key), literal (text). color: 'name' | {map:{val->name},default} | {thresholds:[{op,n,color}],default}. Palette: fg fgDark comment dark5 blue cyan blue5 magenta purple orange yellow green green1 red, or raw 'R;G;B'. format: tok pct sec0 sec1 tps1 dollars3 int raw. valueMap maps raw values to display text or icons while color.map still matches the raw value. truncate: 'start'|'end' (default 'end') — which side to ellipsis when a single-item side overflows; 'start' keeps the tail (e.g. cwd -> '…/pi-statusline'). Use /statusline reload after edits. FOCUS: {enabled, dimUnfocused, unfocusedColor} — subscribes to the standalone pi-focus extension on 'pi-focus:change'; pi-focus is the sole DEC 1004 owner. When dimUnfocused, the whole footer is recolored to unfocusedColor on blur so the focused pane stands out. The `focus` source returns 'focused'|'unfocused' for indicator modules (see focusDot). tmux users: add `set -g focus-events on` or pane switches won't report. /statusline focus shows current state and whether a pi-focus event has been seen.",
   "lines": [
     {
       "left": ["piState", "focusDot", "title"],
@@ -117,10 +117,10 @@
       "color": "orange"
     },
     "elapsed": {
-      "source": "task.elapsed",
+      "source": "task.elapsedTotal",
+      "glyph": "\uf2f2",
       "format": "sec0",
       "nullText": "0s",
-      "prefix": "elapsed ",
       "color": "yellow"
     },
     "ctxLabel": {
@@ -154,9 +154,9 @@
     "ctxNums": { "source": "ctx.nums", "color": "fgDark" },
     "ttft": {
       "source": "ttft",
+      "glyph": "\uf252",
       "format": "sec1",
       "nullText": "0.0s",
-      "prefix": "ttft ",
       "color": {
         "thresholds": [
           { "op": "gte", "n": 3000, "color": "red" },
@@ -174,9 +174,9 @@
     },
     "tps": {
       "source": "tps",
+      "glyph": "\uf0e4",
       "format": "tps1",
       "nullText": "0.0 tok/s",
-      "prefix": "speed ",
       "color": "cyan"
     },
     "tpsAvg": {

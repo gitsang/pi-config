@@ -18,6 +18,6 @@ pi 的配置驱动状态栏 / footer。
 2. 本扩展目录下的 `config.json`
 3. `<cwd>/.pi/pi-statusline.json`（仅受信任项目）
 
-配置会与内置默认值深度合并。通过 `lines` 和 `modules` 定义布局；模块数据源包括 `session.cwd`、`model`、`thinking`、`usage.*`、`ctx.*`、`task.elapsed`、`ttft`、`tps`、`focus`、`ext-status`、`literal` 等。完整模板见 `config.example.json`。
+配置会与内置默认值深度合并。通过 `lines` 和 `modules` 定义布局；模块数据源包括 `session.cwd`、`model`、`thinking`、`usage.*`、`ctx.*`、`task.elapsed`、`task.elapsedTotal`、`ttft`、`tps`、`focus`、`ext-status`、`literal` 等。完整模板见 `config.example.json`。
 
 tmux 用户：如需焦点模块更新，请设置 `set -g focus-events on`。

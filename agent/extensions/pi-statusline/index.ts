@@ -3,7 +3,7 @@
  *
  * Fully config-driven. Zero config = the default 4-line footer (preserved
  * behavior). Data sources are a fixed registry (cwd, model, usage, ctx, ttft,
- * tps, task.elapsed, thinking, branch, title, ext-status, literal). New read-only
+ * tps, task.elapsed, task.elapsedTotal, thinking, branch, title, ext-status, literal). New read-only
  * sources can be added to the registry; the TTFT/TPS/task-elapsed sources are stateful and built-in.
  *
  * CROSS-EXTENSION (no coupling): an external extension "registers" a statusline
@@ -193,10 +193,10 @@ const DEFAULT_RAW: RawConfig = {
 		cacheHit: { source: "usage.ch", glyph: "\uf49b", format: "pct", nullText: "0%", color: "yellow" },
 		cost: { source: "usage.cost", glyph: "\uef8d", format: "dollars3", color: "orange" },
 		elapsed: {
-			source: "task.elapsed",
+			source: "task.elapsedTotal",
+			glyph: "\uf2f2",
 			format: "sec0",
 			nullText: "0s",
-			prefix: "elapsed ",
 			color: "yellow",
 		},
 		ctxLabel: { source: "literal", text: "ctx", color: "comment" },
@@ -210,11 +210,11 @@ const DEFAULT_RAW: RawConfig = {
 		},
 		ctxNums: { source: "ctx.nums", color: "fgDark" },
 		ttft: {
-			source: "ttft", format: "sec1", nullText: "0.0s", prefix: "ttft ",
+			source: "ttft", glyph: "\uf252", format: "sec1", nullText: "0.0s",
 			color: { thresholds: [{ op: "gte", n: 3000, color: "red" }, { op: "gte", n: 1000, color: "yellow" }], default: "green" },
 		},
 		ttftAvg: { source: "ttft.avg", format: "sec1", prefix: "(avg ", suffix: ")", color: "comment" },
-		tps: { source: "tps", format: "tps1", nullText: "0.0 tok/s", prefix: "speed ", color: "cyan" },
+		tps: { source: "tps", glyph: "\uf0e4", format: "tps1", nullText: "0.0 tok/s", color: "cyan" },
 		tpsAvg: { source: "tps.avg", format: "tps1", prefix: "(avg ", suffix: ")", color: "comment" },
 	},
 	separator: { group: "│", item: " ", groupColor: "dark5" },
@@ -284,7 +284,7 @@ interface SourceContext {
 	ctxUsage: any;
 	timing: { ttft: number | null; tps: number | null };
 	timingAvg: { ttft: number | null; tps: number | null };
-	task: { elapsed: number | null };
+	task: { elapsed: number | null; elapsedTotal: number };
 }
 
 function fetchSource(source: string, sc: SourceContext, mc: ModuleConfig): any {
@@ -313,6 +313,7 @@ function fetchSource(source: string, sc: SourceContext, mc: ModuleConfig): any {
 		case "tps": return sc.timing.tps;
 		case "tps.avg": return sc.timingAvg.tps;
 		case "task.elapsed": return sc.task.elapsed;
+		case "task.elapsedTotal": return sc.task.elapsedTotal;
 		case "ext-status": return sc.footerData?.getExtensionStatuses?.()?.get(mc.key ?? "") ?? null;
 		case "literal": return mc.text ?? "";
 		case "focus": return focusState();
@@ -562,6 +563,7 @@ const ttftHistory: number[] = [];
 // ─── task elapsed timing state ───────────────────────────────────────────────
 let taskStartedAt: number | null = null;
 let lastTaskElapsedMs: number | null = null;
+let sessionTaskTotalMs = 0;
 let elapsedTicker: ReturnType<typeof setInterval> | null = null;
 
 function computeUsage(ctx: any) {
@@ -588,7 +590,8 @@ function buildSourceContext(ctx: any, footerData: any): SourceContext {
 	const ttftAvg = ttftHistory.length ? ttftHistory.reduce((a, b) => a + b, 0) / ttftHistory.length : null;
 	const tpsAvg = tpsHistory.length ? tpsHistory.reduce((a, b) => a + b, 0) / tpsHistory.length : null;
 	const taskElapsed = taskStartedAt !== null ? Date.now() - taskStartedAt : lastTaskElapsedMs;
-	return { ctx, footerData, model: ctx.model, usage, ctxUsage, timing: lastTiming, timingAvg: { ttft: ttftAvg, tps: tpsAvg }, task: { elapsed: taskElapsed } };
+	const taskElapsedTotal = sessionTaskTotalMs + (taskStartedAt !== null ? Date.now() - taskStartedAt : 0);
+	return { ctx, footerData, model: ctx.model, usage, ctxUsage, timing: lastTiming, timingAvg: { ttft: ttftAvg, tps: tpsAvg }, task: { elapsed: taskElapsed, elapsedTotal: taskElapsedTotal } };
 }
 
 // ─── render ──────────────────────────────────────────────────────────────────
@@ -646,7 +649,10 @@ function beginTaskTiming(): void {
 }
 
 function finishTaskTiming(): void {
-	if (taskStartedAt !== null) lastTaskElapsedMs = Date.now() - taskStartedAt;
+	if (taskStartedAt !== null) {
+		lastTaskElapsedMs = Date.now() - taskStartedAt;
+		sessionTaskTotalMs += lastTaskElapsedMs;
+	}
 	taskStartedAt = null;
 	stopElapsedTicker();
 	requestRender?.();
@@ -714,6 +720,7 @@ export default function (pi: ExtensionAPI): void {
 		stopElapsedTicker();
 		taskStartedAt = null;
 		lastTaskElapsedMs = null;
+		sessionTaskTotalMs = 0;
 		activeConfig = loadConfig(ctx);
 		if (enabled && ctx.mode === "tui") setupFooter(ctx);
 	});
@@ -721,6 +728,8 @@ export default function (pi: ExtensionAPI): void {
 	pi.on("session_shutdown", () => {
 		stopElapsedTicker();
 		taskStartedAt = null;
+		lastTaskElapsedMs = null;
+		sessionTaskTotalMs = 0;
 	});
 
 	pi.registerCommand("statusline", {
@@ -761,6 +770,7 @@ export default function (pi: ExtensionAPI): void {
 			tpsHistory.length = 0;
 			ttftHistory.length = 0;
 			lastTaskElapsedMs = null;
+			sessionTaskTotalMs = 0;
 			ctx.ui.notify("statusline timing history reset", "info");
 			requestRender?.();
 		},
