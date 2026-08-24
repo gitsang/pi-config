@@ -298,23 +298,27 @@ pre {
 
 .msg {
   max-width: 100%;
-  padding: 12px 14px;
-  border-radius: 10px;
-  line-height: 1.6;
 }
 
 .msg.user {
   align-self: flex-end;
   max-width: min(525px, 82%);
+  padding: 10px 16px;
+  border-radius: 22px;
+  background: var(--pi-bubble);
+  color: var(--pi-text);
+  font-size: 16px;
+  line-height: 24px;
   white-space: pre-wrap;
-  border: 1px solid transparent;
 }
 
 .msg.assistant {
   align-self: flex-start;
-  border: 1px solid var(--pi-border-l1);
-  background: var(--pi-panel);
   width: 100%;
+  background: transparent;
+  font-size: 16px;
+  line-height: 28px;
+  color: var(--pi-text);
 }
 
 .msg-system {
@@ -334,18 +338,29 @@ pre {
   word-break: break-word;
 }
 
+.assistant-markdown {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .markdown pre {
-  background: var(--pi-code-bg, rgba(0, 0, 0, 0.04));
-  padding: 10px;
-  border-radius: 6px;
+  background: var(--pi-code-bg);
+  padding: 12px;
+  border-radius: 10px;
   overflow-x: auto;
-  margin: 8px 0;
+  margin: 0;
+  font-family: var(--pi-font-code);
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .markdown code {
-  background: var(--pi-code-bg, rgba(0, 0, 0, 0.04));
-  padding: 1px 4px;
-  border-radius: 4px;
+  background: var(--pi-code-bg);
+  padding: 1px 5px;
+  border-radius: 6px;
+  font-family: var(--pi-font-code);
+  font-size: 0.9em;
 }
 
 .markdown pre code {
@@ -354,35 +369,71 @@ pre {
 }
 
 /* ---------- Thinking / tool cards ---------- */
-.thinking-card {
-  margin-bottom: 8px;
-  background: var(--pi-panel-raised, #fafafa);
+.thinking {
+  margin: 0 0 4px;
+  color: var(--pi-text-tertiary);
+}
+
+.thinking-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 14px;
+  line-height: 24px;
+  user-select: none;
+}
+
+.thinking-summary::-webkit-details-marker {
+  display: none;
+}
+
+.thinking-chevron {
+  display: inline-flex;
+  font-size: 11px;
+  color: var(--pi-text-secondary);
+  transition: transform 0.12s var(--pi-ease);
+}
+
+.thinking[open] .thinking-chevron {
+  transform: rotate(90deg);
 }
 
 .thinking-body {
+  padding: 4px 0 4px 18px;
   white-space: pre-wrap;
-  font-size: 13px;
-  color: var(--pi-text-secondary, rgba(0, 0, 0, 0.65));
+  word-break: break-word;
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--pi-text-tertiary);
 }
 
-.tool-call {
-  background: var(--pi-code-bg, rgba(0, 0, 0, 0.04));
-  border: 1px solid var(--pi-border, #e5e7eb);
-  border-radius: 8px;
-  padding: 10px;
-  margin-bottom: 8px;
-}
-
+.tool-call,
 .tool-card {
-  margin-bottom: 10px;
-  background: var(--pi-panel-raised, #fafafa);
+  background: var(--pi-panel-raised);
+  border: 1px solid var(--pi-border-l1);
+  border-radius: 12px;
+  padding: 12px;
+  margin: 4px 0 0;
+}
+
+.tool-call-header,
+.tool-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .tool-call pre,
 .tool-card pre {
-  margin: 8px 0 0;
+  margin: 0;
   overflow-x: auto;
+  font-family: var(--pi-font-code);
   font-size: 12px;
+  line-height: 18px;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -390,14 +441,14 @@ pre {
 .tool-output {
   max-height: 400px;
   overflow-y: auto;
-  background: var(--pi-code-bg, rgba(0, 0, 0, 0.04));
-  padding: 8px;
-  border-radius: 6px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: var(--pi-code-bg);
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-family: var(--pi-font-code);
 }
 
 .tool-card.error {
-  border-color: var(--pi-error, #ff4d4f);
+  border-color: var(--pi-error);
 }
 
 /* ---------- Busy / banner / composer ---------- */

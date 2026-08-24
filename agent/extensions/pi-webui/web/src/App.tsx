@@ -799,48 +799,36 @@ function App({
 }
 
 function MessageView({ message }: { message: ChatMessage }) {
-  const { token } = theme.useToken();
-
   if (message.role === "user") {
     const text = message.content
       .map((c) => (c.type === "text" ? c.text : ""))
       .filter(Boolean)
       .join("\n");
-    return (
-      <div className="msg user" style={{ background: token.colorPrimaryBg, borderColor: token.colorPrimaryBorder }}>
-        {text}
-      </div>
-    );
+    return <div className="msg user">{text}</div>;
   }
 
   if (message.role === "assistant") {
     return (
-      <div
-        className="msg assistant"
-        style={{ background: token.colorBgContainer, borderColor: token.colorBorderSecondary }}
-      >
+      <div className="msg assistant">
         {message.content.map((part, i) => {
           if (part.type === "thinking") {
             const thinking = part.thinking ?? "";
             if (!thinking) return null;
             return (
-              <Card
-                key={i}
-                size="small"
-                className="thinking-card"
-                title={
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    thinking
-                  </Typography.Text>
-                }
-              >
+              <details key={i} className="thinking">
+                <summary className="thinking-summary">
+                  <span className="thinking-chevron" aria-hidden="true">
+                    ▸
+                  </span>
+                  <span>thinking</span>
+                </summary>
                 <div className="thinking-body">{thinking}</div>
-              </Card>
+              </details>
             );
           }
           if (part.type === "text") {
             return (
-              <div key={i} className="markdown">
+              <div key={i} className="markdown assistant-markdown">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{part.text ?? ""}</ReactMarkdown>
               </div>
             );
@@ -850,7 +838,9 @@ function MessageView({ message }: { message: ChatMessage }) {
               typeof part.input === "string" ? part.input : JSON.stringify(part.input ?? {}, null, 2);
             return (
               <div key={i} className="tool-call">
-                <Typography.Text strong>tool_call</Typography.Text>
+                <div className="tool-call-header">
+                  <Typography.Text strong>tool_call</Typography.Text>
+                </div>
                 <pre>{input}</pre>
               </div>
             );
@@ -873,23 +863,18 @@ function MessageView({ message }: { message: ChatMessage }) {
 }
 
 function ToolCardView({ card }: { card: ToolCard }) {
-  const { token } = theme.useToken();
   const output = card.status === "done" ? stringifyResult(card.result) : card.partialResult ?? "";
   return (
-    <Card
-      size="small"
-      className={`tool-card ${card.isError ? "error" : ""}`}
-      style={{ borderColor: card.isError ? token.colorError : token.colorBorderSecondary }}
-      title={<Typography.Text strong>{card.toolName}</Typography.Text>}
-      extra={
+    <div className={`tool-card ${card.isError ? "error" : ""}`}>
+      <div className="tool-card-header">
+        <Typography.Text strong>{card.toolName}</Typography.Text>
         <Tag color={card.isError ? "error" : card.status === "done" ? "success" : "processing"}>
           {card.isError ? "失败" : card.status === "done" ? "完成" : "执行中…"}
         </Tag>
-      }
-    >
+      </div>
       {card.args != null && <pre>{JSON.stringify(card.args, null, 2)}</pre>}
       {output && <pre className="tool-output">{output}</pre>}
-    </Card>
+    </div>
   );
 }
 
