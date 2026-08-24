@@ -3,7 +3,7 @@
   "onFirstTurn": true,
   "onCompact": true,
   "refreshEveryTurns": 1,
-  "maxTitleLength": 60,
+  "maxTitleLength": 35,
   "language": "auto",
   "setTerminalTitle": false,
   "includeAssistantOutput": true

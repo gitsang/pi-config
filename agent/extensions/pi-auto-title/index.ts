@@ -18,7 +18,7 @@
  *   "onFirstTurn": true,        // generate after first user input (default true)
  *   "onCompact": true,          // regenerate after compaction (default true)
  *   "refreshEveryTurns": 0,     // 0 = off; N = regenerate every N user inputs
- *   "maxTitleLength": 60,       // truncate title to this length
+ *   "maxTitleLength": 35,       // truncate title to this terminal display width
  *   "language": "auto",         // "auto" | "zh" | "en" (default "auto")
  *   "setTerminalTitle": false,  // also set the terminal/tab title (default false)
  *   "includeAssistantOutput": true // include each turn's final assistant output in title context (default true)
@@ -77,7 +77,7 @@ const DEFAULTS: ResolvedConfig = {
 	onFirstTurn: true,
 	onCompact: true,
 	refreshEveryTurns: 0,
-	maxTitleLength: 60,
+	maxTitleLength: 35,
 	language: "auto",
 	setTerminalTitle: false,
 	includeAssistantOutput: true,
@@ -186,11 +186,94 @@ function isCommandInput(text: string): boolean {
 	return (c === 32 || c === 9 || c === 10 || c === 13) && t.slice(offset).trim().length > 0;
 }
 
+const ELLIPSIS = "…";
+
+/**
+ * Terminal display-width helpers.
+ *
+ * We approximate the width a modern terminal gives a Unicode code point:
+ * East Asian Wide / Fullwidth glyphs count as 2, combining marks and
+ * zero-width/control/format characters count as 0, everything else counts as 1.
+ * Widths are summed per code point so truncation never splits a surrogate pair
+ * or a double-width glyph in half.
+ */
+const ZERO_WIDTH_RE = /^[\p{M}\p{Cc}\p{Cf}]$/u;
+
+const WIDE_RANGES: ReadonlyArray<readonly [number, number]> = [
+	[0x1100, 0x115f], // Hangul Jamo consonants
+	[0x2e80, 0x303e], // CJK Radicals, Kangxi, CJK punctuation/symbols
+	[0x3040, 0x30ff], // Hiragana, Katakana
+	[0x3100, 0x312f], // Bopomofo
+	[0x3130, 0x318f], // Hangul Compatibility Jamo
+	[0x3190, 0x319f], // Kanbun
+	[0x31a0, 0x31bf], // Bopomofo Extended
+	[0x31f0, 0x31ff], // Katakana Phonetic Extensions
+	[0x3200, 0x32ff], // Enclosed CJK Letters and Months
+	[0x3300, 0x33ff], // CJK Compatibility
+	[0x3400, 0x4dbf], // CJK Unified Ideographs Extension A
+	[0x4dc0, 0x4dff], // Yijing Hexagram Symbols
+	[0x4e00, 0x9fff], // CJK Unified Ideographs
+	[0xa000, 0xa48f], // Yi Syllables
+	[0xa490, 0xa4cf], // Yi Radicals
+	[0xa960, 0xa97f], // Hangul Jamo Extended-A
+	[0xac00, 0xd7a3], // Hangul Syllables
+	[0xd7b0, 0xd7ff], // Hangul Jamo Extended-B
+	[0xf900, 0xfaff], // CJK Compatibility Ideographs
+	[0xfe10, 0xfe19], // Vertical Forms
+	[0xfe30, 0xfe52], // CJK Compatibility Forms
+	[0xfe54, 0xfe66], // Small Form Variants
+	[0xfe68, 0xfe6b], // Small Form Variants
+	[0xff00, 0xff60], // Fullwidth Forms
+	[0xffe0, 0xffe6], // Fullwidth Signs
+	[0x1b000, 0x1b2ff], // Kana Supplement / Small Kana Extended
+	[0x1f200, 0x1f2ff], // Enclosed Ideographic Supplement
+	[0x1f300, 0x1f64f], // Emoticons
+	[0x1f680, 0x1f6ff], // Transport and Map Symbols
+	[0x1f900, 0x1f9ff], // Supplemental Symbols and Pictographs
+	[0x1fa70, 0x1faff], // Symbols and Pictographs Extended-A
+	[0x20000, 0x2fffd], // CJK Unified Ideographs Extension B+
+	[0x30000, 0x3fffd], // CJK Unified Ideographs Extension G+
+];
+
+function isWideCodePoint(cp: number): boolean {
+	for (const [start, end] of WIDE_RANGES) {
+		if (cp >= start && cp <= end) return true;
+	}
+	return false;
+}
+
+function codePointDisplayWidth(cp: number): number {
+	if (ZERO_WIDTH_RE.test(String.fromCodePoint(cp))) return 0;
+	if (isWideCodePoint(cp)) return 2;
+	return 1;
+}
+
+function terminalDisplayWidth(text: string): number {
+	let width = 0;
+	for (const ch of text) width += codePointDisplayWidth(ch.codePointAt(0)!);
+	return width;
+}
+
+function truncateToDisplayWidth(text: string, maxWidth: number): string {
+	if (maxWidth <= 0) return "";
+	if (terminalDisplayWidth(text) <= maxWidth) return text;
+
+	const target = Math.max(0, maxWidth - terminalDisplayWidth(ELLIPSIS));
+	let out = "";
+	let width = 0;
+	for (const ch of text) {
+		const w = codePointDisplayWidth(ch.codePointAt(0)!);
+		if (width + w > target) break;
+		out += ch;
+		width += w;
+	}
+	return `${out.trimEnd()}${ELLIPSIS}`;
+}
+
 function cleanupTitle(raw: string, maxLen: number): string {
 	let t = raw.replace(/^["'`“”‘’]+|["'`“”‘’.。]+$/g, "").trim();
 	t = t.replace(/\s+/g, " ");
-	if (t.length > maxLen) t = `${t.slice(0, Math.max(0, maxLen - 1)).trimEnd()}…`;
-	return t;
+	return truncateToDisplayWidth(t, maxLen);
 }
 
 export default function (pi: ExtensionAPI) {
@@ -285,7 +368,7 @@ export default function (pi: ExtensionAPI) {
 		const prompt = [
 			"Generate a concise title for this conversation.",
 			"Rules:",
-			`- At most ${cfg.maxTitleLength} characters.`,
+			`- At most ${cfg.maxTitleLength} columns of terminal display width (wide CJK/emoji glyphs count as 2, combining marks count as 0).`,
 			"- No surrounding quotes, no markdown, no trailing punctuation.",
 			`- ${langInstr}`,
 			"- Output ONLY the title text, nothing else.",

@@ -17,3 +17,5 @@
 ## 配置
 
 读取本扩展目录下的 `config.json`；项目级覆盖：`<cwd>/.pi/pi-auto-title.json`（仅受信任项目）。所有字段见 `config.example.json`（`model`、`onFirstTurn`、`onCompact`、`refreshEveryTurns`、`maxTitleLength`、`language`、`setTerminalTitle`、`includeAssistantOutput`）。
+
+`maxTitleLength` 按终端显示列数计算：CJK/全角/宽字符计 2 列，组合标记计 0 列，普通字符计 1 列。

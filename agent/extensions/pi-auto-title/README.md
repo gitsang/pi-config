@@ -17,3 +17,5 @@ Automatically generates short session titles for pi.
 ## Configuration
 
 Reads `config.json` next to this extension; project override: `<cwd>/.pi/pi-auto-title.json` (trusted projects only). See `config.example.json` for all fields (`model`, `onFirstTurn`, `onCompact`, `refreshEveryTurns`, `maxTitleLength`, `language`, `setTerminalTitle`, `includeAssistantOutput`).
+
+`maxTitleLength` is measured in terminal display columns: CJK/wide/fullwidth glyphs count as 2, combining marks count as 0, and regular characters count as 1.
