@@ -354,7 +354,7 @@
       "api": "openai-completions",
       "models": [
         {
-          "id": "qwen3.8-27b-4bit",
+          "id": "Qwen3.8-27B-oQ4e-fp16-mtp",
           "name": "Qwen3.8 27B",
           "contextWindow": 200000,
           "maxTokens": 65536,
