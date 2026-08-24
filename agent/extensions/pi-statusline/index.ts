@@ -214,7 +214,7 @@ const DEFAULT_RAW: RawConfig = {
 			color: { thresholds: [{ op: "gte", n: 3000, color: "red" }, { op: "gte", n: 1000, color: "yellow" }], default: "green" },
 		},
 		ttftAvg: { source: "ttft.avg", format: "sec1", prefix: "(avg ", suffix: ")", color: "comment" },
-		tps: { source: "tps", glyph: "\uf0e4", format: "tps1", nullText: "0.0 tok/s", color: "cyan" },
+		tps: { source: "tps", glyph: "\uf0e4", format: "tps1", nullText: "0.0tok/s", color: "cyan" },
 		tpsAvg: { source: "tps.avg", format: "tps1", prefix: "(avg ", suffix: ")", color: "comment" },
 	},
 	separator: { group: "│", item: " ", groupColor: "dark5" },
@@ -352,7 +352,7 @@ function formatValue(format: string | undefined, raw: any, nullText: string | un
 		case "pct": return `${Math.round(num)}%`;
 		case "sec0": return `${Math.round(num / 1000)}s`;
 		case "sec1": return `${(num / 1000).toFixed(1)}s`;
-		case "tps1": return `${num.toFixed(1)} tok/s`;
+		case "tps1": return `${num.toFixed(1)}tok/s`;
 		case "dollars3": return `$${num.toFixed(3)}`;
 		case "int": return `${Math.round(num)}`;
 		default: return String(raw);

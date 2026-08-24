@@ -176,7 +176,7 @@
       "source": "tps",
       "glyph": "\uf0e4",
       "format": "tps1",
-      "nullText": "0.0 tok/s",
+      "nullText": "0.0tok/s",
       "color": "cyan"
     },
     "tpsAvg": {
