@@ -9,7 +9,7 @@ extensions/pi-webui/
 ├── index.ts          # pi 扩展：/pi-webui install|update|version|start...
 ├── cmd/pi-webui/     # Go 二进制入口
 ├── internal/         # config/auth/rpc/sessionmgr/api/logging
-├── web/              # React + TypeScript 前端（Vite）
+├── web/              # React + TypeScript 前端（Vite + Ant Design，支持明暗主题）
 ├── Makefile
 ├── version.txt
 └── README.md

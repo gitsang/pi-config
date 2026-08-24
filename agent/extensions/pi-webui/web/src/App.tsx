@@ -1,8 +1,42 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import {
+  Alert,
+  App as AntApp,
+  Button,
+  Card,
+  ConfigProvider,
+  Empty,
+  Input,
+  Layout,
+  List,
+  Modal,
+  Select,
+  Space,
+  Spin,
+  Tag,
+  theme,
+  Tooltip,
+  Typography,
+} from "antd";
+import {
+  CloseOutlined,
+  EditOutlined,
+  LogoutOutlined,
+  MoonOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SendOutlined,
+  StopOutlined,
+  SunOutlined,
+} from "@ant-design/icons";
+import zhCN from "antd/locale/zh_CN";
 import { api, UnauthorizedError } from "./api";
 import type { ChatMessage, PiModel, PiState, SessionSummary, ToolCard } from "./types";
+
+type ThemeMode = "light" | "dark";
+const THEME_STORAGE_KEY = "pi-webui-theme";
 
 interface AssistantEvent {
   type: string;
@@ -14,7 +48,41 @@ interface AssistantEvent {
   messageId?: string;
 }
 
-function App() {
+function AppRoot() {
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved === "light" || saved === "dark") return saved;
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
+
+  useEffect(() => {
+    localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+    document.documentElement.style.colorScheme = themeMode;
+  }, [themeMode]);
+
+  return (
+    <ConfigProvider
+      locale={zhCN}
+      theme={{
+        algorithm: themeMode === "dark" ? theme.darkAlgorithm : theme.defaultAlgorithm,
+        token: {
+          borderRadius: 8,
+          fontFamily:
+            '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif',
+        },
+      }}
+    >
+      <AntApp>
+        <App themeMode={themeMode} onToggleTheme={() => setThemeMode((m) => (m === "dark" ? "light" : "dark"))} />
+      </AntApp>
+    </ConfigProvider>
+  );
+}
+
+function App({ themeMode, onToggleTheme }: { themeMode: ThemeMode; onToggleTheme: () => void }) {
+  const { token } = theme.useToken();
+  const { message } = AntApp.useApp();
+
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -33,10 +101,28 @@ function App() {
   const [selectedThinking, setSelectedThinking] = useState("");
   const [input, setInput] = useState("");
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
   const sseRef = useRef<EventSource | null>(null);
   const openedOnceRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--pi-bg", token.colorBgLayout);
+    root.style.setProperty("--pi-panel", token.colorBgContainer);
+    root.style.setProperty("--pi-panel-raised", token.colorBgElevated);
+    root.style.setProperty("--pi-border", token.colorBorderSecondary);
+    root.style.setProperty("--pi-text", token.colorText);
+    root.style.setProperty("--pi-text-secondary", token.colorTextSecondary);
+    root.style.setProperty("--pi-primary", token.colorPrimary);
+    root.style.setProperty("--pi-primary-bg", token.colorPrimaryBg);
+    root.style.setProperty("--pi-primary-border", token.colorPrimaryBorder);
+    root.style.setProperty("--pi-success", token.colorSuccess);
+    root.style.setProperty("--pi-error", token.colorError);
+    root.style.setProperty("--pi-code-bg", token.colorFillTertiary);
+    root.style.setProperty("--pi-warning", token.colorWarning);
+  }, [token]);
 
   useEffect(() => {
     api
@@ -45,9 +131,8 @@ function App() {
         setAuthenticated(true);
         void refreshSessions();
       })
-      .catch((err) => {
-        if (err instanceof UnauthorizedError) setAuthenticated(false);
-        else setAuthenticated(false);
+      .catch(() => {
+        setAuthenticated(false);
       });
   }, []);
 
@@ -67,6 +152,20 @@ function App() {
   useEffect(() => {
     if (authenticated) void refreshSessions();
   }, [authenticated, refreshSessions]);
+
+  const modelOptions = useMemo(
+    () =>
+      models.map((m) => ({
+        value: `${m.provider}/${m.id}`,
+        label: `${m.name ?? m.id} (${m.provider})`,
+      })),
+    [models],
+  );
+
+  const thinkingOptions = useMemo(
+    () => thinkingLevels.map((level) => ({ value: level, label: level })),
+    [thinkingLevels],
+  );
 
   function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -218,7 +317,9 @@ function App() {
   function handleMessageStart(message: ChatMessage) {
     if (!message) return;
     setMessages((prev) => {
-      const idx = prev.findIndex((m) => m.timestamp && message.timestamp && m.timestamp === message.timestamp);
+      const idx = prev.findIndex(
+        (m) => m.timestamp && message.timestamp && m.timestamp === message.timestamp,
+      );
       if (idx >= 0) {
         const next = [...prev];
         next[idx] = message;
@@ -231,7 +332,9 @@ function App() {
   function handleMessageEnd(message: ChatMessage) {
     if (!message) return;
     setMessages((prev) => {
-      const idx = prev.findIndex((m) => m.timestamp && message.timestamp && m.timestamp === message.timestamp);
+      const idx = prev.findIndex(
+        (m) => m.timestamp && message.timestamp && m.timestamp === message.timestamp,
+      );
       if (idx >= 0) {
         const next = [...prev];
         next[idx] = message;
@@ -277,7 +380,7 @@ function App() {
     while (content.length <= ci) content.push({ type: "text", text: "" });
     const part = content[ci];
 
-    if (t === "thinking_start" || ae.kind === "thinking" && t === "message_update") {
+    if (t === "thinking_start" || (ae.kind === "thinking" && t === "message_update")) {
       content[ci] = { type: "thinking", thinking: "" };
     } else if (t === "thinking_delta" || (ae.kind === "thinking" && ae.delta)) {
       const thinking = typeof part.thinking === "string" ? part.thinking : "";
@@ -297,7 +400,12 @@ function App() {
       const existing = typeof part.input === "string" ? part.input : "";
       content[ci] = { ...part, type: "toolCall", input: existing + (ae.delta ?? "") };
     } else if (t === "toolcall_end") {
-      content[ci] = { ...part, type: "toolCall", toolCall: ae.toolCall, input: JSON.stringify(ae.toolCall ?? part.input ?? "") };
+      content[ci] = {
+        ...part,
+        type: "toolCall",
+        toolCall: ae.toolCall,
+        input: JSON.stringify(ae.toolCall ?? part.input ?? ""),
+      };
     } else if (ae.delta) {
       const text = typeof part.text === "string" ? part.text : "";
       content[ci] = { ...part, type: "text", text: text + ae.delta };
@@ -366,7 +474,7 @@ function App() {
     try {
       const res = await api.createSession(newCwd);
       openSession(res.browserSessionId, res.cwd);
-      setNotice(`已创建会话 ${res.browserSessionId}`);
+      message.success(`已创建会话 ${res.browserSessionId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -438,152 +546,208 @@ function App() {
     }
   }
 
-  async function handleRename() {
+  function openRenameModal() {
+    setRenameValue(piState.sessionName ?? "");
+    setRenameOpen(true);
+  }
+
+  async function submitRename() {
     if (!activeBsid) return;
-    const name = window.prompt("会话名称", piState.sessionName ?? "");
-    if (name === null) return;
     try {
-      await api.sendCommand(activeBsid, { type: "set_session_name", name: name.trim() });
-      setPiState((s) => ({ ...s, sessionName: name.trim() }));
+      await api.sendCommand(activeBsid, { type: "set_session_name", name: renameValue.trim() });
+      setPiState((s) => ({ ...s, sessionName: renameValue.trim() }));
+      setRenameOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   }
 
   if (authenticated === null) {
-    return <div className="page-center">加载中…</div>;
+    return (
+      <div className="page-center">
+        <Spin size="large" />
+      </div>
+    );
   }
 
   if (authenticated === false) {
     return (
       <div className="page-center">
-        <form className="login-card" onSubmit={handleLogin}>
-          <h1>pi-webui</h1>
-          <p>请输入登录密码</p>
-          <input
-            type="password"
-            value={loginPassword}
-            onChange={(e) => setLoginPassword(e.target.value)}
-            placeholder="密码"
-            autoFocus
-          />
-          {loginError && <div className="error">{loginError}</div>}
-          <button type="submit">登录</button>
+        <form onSubmit={handleLogin}>
+          <Card className="login-card" title="pi-webui">
+            <Space direction="vertical" size={14} style={{ width: "100%" }}>
+              <Typography.Text type="secondary">请输入登录密码</Typography.Text>
+              <Input.Password
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                placeholder="密码"
+                autoFocus
+              />
+              {loginError && <Alert type="error" showIcon message={loginError} />}
+              <Button type="primary" htmlType="submit" block>
+                登录
+              </Button>
+            </Space>
+          </Card>
         </form>
       </div>
     );
   }
 
   return (
-    <div className="layout">
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <h1>pi-webui</h1>
-          <button onClick={handleLogout} className="link">
-            退出
-          </button>
-        </div>
-        <div className="new-session">
-          <input
-            value={newCwd}
-            onChange={(e) => setNewCwd(e.target.value)}
-            placeholder="cwd（留空=服务器当前目录）"
-          />
-          <button onClick={handleNewSession}>新建会话</button>
-        </div>
-        <div className="filter">
-          <input
-            value={cwdFilter}
-            onChange={(e) => setCwdFilter(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void refreshSessions();
-            }}
-            placeholder="按 cwd 过滤会话列表"
-          />
-          <button onClick={() => void refreshSessions()}>刷新</button>
-        </div>
-        <div className="session-list">
-          {sessions.map((s) => (
-            <div
-              key={s.sessionFile}
-              className={`session-item ${activeBsid && activeCwd === s.cwd ? "active" : ""}`}
-              onClick={() => void handleImport(s.sessionFile)}
-              title={s.sessionFile}
-            >
-              <div className="session-title">{s.title || s.sessionId}</div>
-              <div className="session-meta">{s.cwd || "全局"}</div>
-            </div>
-          ))}
-          {sessions.length === 0 && <div className="muted">暂无会话</div>}
-        </div>
-      </aside>
+    <Layout className="app-layout">
+      <Layout.Sider width={340} theme="light" className="sidebar">
+        <div className="sidebar-inner">
+          <div className="sidebar-header">
+            <Typography.Title level={4} style={{ margin: 0 }}>
+              pi-webui
+            </Typography.Title>
+            <Space size={4}>
+              <Tooltip title={themeMode === "dark" ? "切换亮色主题" : "切换暗色主题"}>
+                <Button
+                  type="text"
+                  aria-label="切换主题"
+                  icon={themeMode === "dark" ? <SunOutlined /> : <MoonOutlined />}
+                  onClick={onToggleTheme}
+                />
+              </Tooltip>
+              <Tooltip title="退出登录">
+                <Button type="text" aria-label="退出登录" icon={<LogoutOutlined />} onClick={handleLogout} />
+              </Tooltip>
+            </Space>
+          </div>
 
-      <main className="main">
-        <header className="topbar">
+          <Space.Compact className="new-session">
+            <Input
+              value={newCwd}
+              onChange={(e) => setNewCwd(e.target.value)}
+              placeholder="cwd（留空=服务器当前目录）"
+              onPressEnter={() => void handleNewSession()}
+            />
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => void handleNewSession()}>
+              新建
+            </Button>
+          </Space.Compact>
+
+          <Space.Compact className="filter">
+            <Input
+              value={cwdFilter}
+              onChange={(e) => setCwdFilter(e.target.value)}
+              onPressEnter={() => void refreshSessions()}
+              placeholder="按 cwd 过滤会话列表"
+              allowClear
+            />
+            <Button icon={<ReloadOutlined />} onClick={() => void refreshSessions()}>
+              刷新
+            </Button>
+          </Space.Compact>
+
+          <div className="session-list">
+            <List
+              dataSource={sessions}
+              locale={{
+                emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无会话" />,
+              }}
+              renderItem={(s) => (
+                <List.Item
+                  className={`session-item ${activeBsid && activeCwd === s.cwd ? "active" : ""}`}
+                  onClick={() => void handleImport(s.sessionFile)}
+                  title={s.sessionFile}
+                >
+                  <div className="session-item-body">
+                    <Typography.Text ellipsis strong>
+                      {s.title || s.sessionId}
+                    </Typography.Text>
+                    <Typography.Text type="secondary" className="session-meta" ellipsis>
+                      {s.cwd || "全局"}
+                    </Typography.Text>
+                  </div>
+                </List.Item>
+              )}
+            />
+          </div>
+        </div>
+      </Layout.Sider>
+
+      <Layout>
+        <Layout.Header className="topbar">
           <div className="topbar-title">
             {activeBsid ? (
-              <>
-                <strong>{piState.sessionName ?? "会话"}</strong>
-                <span className="muted">
-                  {" "}
+              <Space direction="vertical" size={0}>
+                <Typography.Text strong>{piState.sessionName ?? "会话"}</Typography.Text>
+                <Typography.Text type="secondary" className="muted">
                   {activeCwd} · {activeBsid.slice(0, 8)}
-                </span>
-              </>
+                </Typography.Text>
+              </Space>
             ) : (
-              <span className="muted">请新建或导入会话</span>
+              <Typography.Text type="secondary">请新建或导入会话</Typography.Text>
             )}
           </div>
-          <div className="topbar-controls">
-            <select value={selectedModel} onChange={(e) => void handleModelChange(e.target.value)}>
-              <option value="">选择模型</option>
-              {models.map((m) => (
-                <option key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>
-                  {m.name ?? m.id} ({m.provider})
-                </option>
-              ))}
-            </select>
-            <select value={selectedThinking} onChange={(e) => void handleThinkingChange(e.target.value)}>
-              <option value="">thinking</option>
-              {thinkingLevels.map((level) => (
-                <option key={level} value={level}>
-                  {level}
-                </option>
-              ))}
-            </select>
+          <Space wrap className="topbar-controls">
+            <Select
+              value={selectedModel || undefined}
+              onChange={(value) => void handleModelChange(value)}
+              options={modelOptions}
+              placeholder="选择模型"
+              className="topbar-select"
+              popupMatchSelectWidth={false}
+            />
+            <Select
+              value={selectedThinking || undefined}
+              onChange={(value) => void handleThinkingChange(value)}
+              options={thinkingOptions}
+              placeholder="thinking"
+              className="topbar-select thinking-select"
+              popupMatchSelectWidth={false}
+              allowClear
+            />
             {activeBsid && (
               <>
-                <button onClick={handleRename} title="重命名会话">
-                  重命名
-                </button>
-                <button onClick={handleAbort} disabled={!busy}>
+                <Tooltip title="重命名会话">
+                  <Button icon={<EditOutlined />} onClick={openRenameModal}>
+                    重命名
+                  </Button>
+                </Tooltip>
+                <Button danger icon={<StopOutlined />} disabled={!busy} onClick={handleAbort}>
                   中止
-                </button>
-                <button onClick={handleCloseActive}>关闭</button>
+                </Button>
+                <Button icon={<CloseOutlined />} onClick={handleCloseActive}>
+                  关闭
+                </Button>
               </>
             )}
-          </div>
-        </header>
+          </Space>
+        </Layout.Header>
 
-        <div className="transcript">
+        <Layout.Content className="transcript">
           {messages.map((msg, i) => (
             <MessageView key={msg.id ?? msg.timestamp ?? i} message={msg} />
           ))}
           {toolCards.map((card) => (
             <ToolCardView key={card.toolCallId} card={card} />
           ))}
-          {busy && <div className="busy">正在思考…</div>}
+          {busy && (
+            <div className="busy">
+              <Spin size="small" />
+              <span>正在思考…</span>
+            </div>
+          )}
           <div ref={messagesEndRef} />
-        </div>
+        </Layout.Content>
 
-        {(error || notice) && (
-          <div className="banner">
-            {error && <span className="error">{error}</span>}
-            {notice && <span className="notice">{notice}</span>}
-          </div>
+        {error && (
+          <Alert
+            className="banner"
+            type="error"
+            showIcon
+            closable
+            message={error}
+            onClose={() => setError("")}
+          />
         )}
 
         <footer className="composer">
-          <textarea
+          <Input.TextArea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -593,38 +757,55 @@ function App() {
               }
             }}
             placeholder={busy ? "流式中：Enter 发送 steering 消息" : "输入消息（Enter 发送，Shift+Enter 换行）"}
-            rows={3}
+            autoSize={{ minRows: 2, maxRows: 8 }}
           />
-          <button onClick={handleSend} disabled={!activeBsid || !input.trim()}>
+          <Button type="primary" icon={<SendOutlined />} onClick={handleSend} disabled={!activeBsid || !input.trim()}>
             发送
-          </button>
+          </Button>
         </footer>
-      </main>
-    </div>
+      </Layout>
+    </Layout>
   );
 }
 
 function MessageView({ message }: { message: ChatMessage }) {
+  const { token } = theme.useToken();
+
   if (message.role === "user") {
     const text = message.content
       .map((c) => (c.type === "text" ? c.text : ""))
       .filter(Boolean)
       .join("\n");
-    return <div className="msg user">{text}</div>;
+    return (
+      <div className="msg user" style={{ background: token.colorPrimaryBg, borderColor: token.colorPrimaryBorder }}>
+        {text}
+      </div>
+    );
   }
 
   if (message.role === "assistant") {
     return (
-      <div className="msg assistant">
+      <div
+        className="msg assistant"
+        style={{ background: token.colorBgContainer, borderColor: token.colorBorderSecondary }}
+      >
         {message.content.map((part, i) => {
           if (part.type === "thinking") {
             const thinking = part.thinking ?? "";
             if (!thinking) return null;
             return (
-              <details key={i} className="thinking">
-                <summary>thinking</summary>
+              <Card
+                key={i}
+                size="small"
+                className="thinking-card"
+                title={
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    thinking
+                  </Typography.Text>
+                }
+              >
                 <div className="thinking-body">{thinking}</div>
-              </details>
+              </Card>
             );
           }
           if (part.type === "text") {
@@ -635,10 +816,11 @@ function MessageView({ message }: { message: ChatMessage }) {
             );
           }
           if (part.type === "toolCall") {
-            const input = typeof part.input === "string" ? part.input : JSON.stringify(part.input ?? {});
+            const input =
+              typeof part.input === "string" ? part.input : JSON.stringify(part.input ?? {}, null, 2);
             return (
               <div key={i} className="tool-call">
-                <strong>tool_call</strong>
+                <Typography.Text strong>tool_call</Typography.Text>
                 <pre>{input}</pre>
               </div>
             );
@@ -650,23 +832,34 @@ function MessageView({ message }: { message: ChatMessage }) {
   }
 
   return (
-    <div className="msg system">
-      <pre>{JSON.stringify(message, null, 2)}</pre>
-    </div>
+    <Alert
+      className="msg-system"
+      type="info"
+      showIcon
+      message="系统消息"
+      description={<pre className="system-pre">{JSON.stringify(message, null, 2)}</pre>}
+    />
   );
 }
 
 function ToolCardView({ card }: { card: ToolCard }) {
+  const { token } = theme.useToken();
   const output = card.status === "done" ? stringifyResult(card.result) : card.partialResult ?? "";
   return (
-    <div className={`tool-card ${card.isError ? "error" : ""}`}>
-      <div className="tool-card-header">
-        <strong>{card.toolName}</strong>
-        <span className="muted">{card.status === "done" ? "完成" : "执行中…"}</span>
-      </div>
+    <Card
+      size="small"
+      className={`tool-card ${card.isError ? "error" : ""}`}
+      style={{ borderColor: card.isError ? token.colorError : token.colorBorderSecondary }}
+      title={<Typography.Text strong>{card.toolName}</Typography.Text>}
+      extra={
+        <Tag color={card.isError ? "error" : card.status === "done" ? "success" : "processing"}>
+          {card.isError ? "失败" : card.status === "done" ? "完成" : "执行中…"}
+        </Tag>
+      }
+    >
       {card.args != null && <pre>{JSON.stringify(card.args, null, 2)}</pre>}
       {output && <pre className="tool-output">{output}</pre>}
-    </div>
+    </Card>
   );
 }
 
@@ -680,4 +873,4 @@ function stringifyResult(result: unknown): string {
   }
 }
 
-export default App;
+export default AppRoot;

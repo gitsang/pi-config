@@ -30,6 +30,8 @@ export interface ChatContentPart {
   type: string;
   text?: string;
   thinking?: string;
+  input?: unknown;
+  toolCall?: unknown;
   [key: string]: unknown;
 }
 
