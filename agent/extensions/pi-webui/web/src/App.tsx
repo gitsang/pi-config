@@ -132,6 +132,18 @@ function App({
   const sseRef = useRef<EventSource | null>(null);
   const openedOnceRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const resizeComposer = useCallback(() => {
+    const el = composerTextareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 56), 320)}px`;
+  }, []);
+
+  useEffect(() => {
+    resizeComposer();
+  }, [input, resizeComposer]);
 
   useEffect(() => {
     api
@@ -746,12 +758,14 @@ function App({
 
         <footer className="composer">
           <div className="composer-card">
-            <Input.TextArea
+            <textarea
+              ref={composerTextareaRef}
               className="composer-textarea"
-              classNames={{ textarea: "composer-textarea" }}
-              variant="borderless"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                resizeComposer();
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -759,7 +773,7 @@ function App({
                 }
               }}
               placeholder={busy ? "流式中：Enter 发送 steering 消息" : "输入消息（Enter 发送，Shift+Enter 换行）"}
-              autoSize={{ minRows: 2, maxRows: 8 }}
+              rows={2}
             />
             <div className="composer-actions">
               <Space wrap className="composer-controls">

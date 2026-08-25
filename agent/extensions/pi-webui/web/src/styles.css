@@ -572,32 +572,34 @@ pre {
   transition: border-color 0.2s var(--pi-ease), box-shadow 0.2s var(--pi-ease);
 }
 
-.composer .composer-textarea-affix,
-.composer .composer-textarea-affix:focus,
-.composer .composer-textarea-affix:focus-within,
-.composer .composer-textarea-affix-focused {
-  border: none !important;
-  box-shadow: none !important;
-  background: transparent !important;
-  padding: 0 !important;
-}
-
-.composer .composer-textarea,
-.composer .composer-textarea:focus,
-.composer .composer-textarea:focus-visible,
-.composer .composer-textarea:active {
-  border: none !important;
-  box-shadow: none !important;
-  outline: none !important;
-  background: transparent !important;
-  padding: 4px 16px 0 !important;
-  font-size: inherit;
+.composer-textarea {
+  display: block;
+  width: 100%;
+  min-height: 56px;
+  max-height: 320px;
+  padding: 4px 16px 0;
+  resize: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
   line-height: inherit;
   color: var(--pi-text);
   caret-color: var(--pi-primary);
+  overflow-y: auto;
 }
 
-.composer .composer-textarea::placeholder {
+.composer-textarea:focus,
+.composer-textarea:focus-visible,
+.composer-textarea:active {
+  border: none;
+  outline: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.composer-textarea::placeholder {
   color: var(--pi-text-caption);
 }
 
