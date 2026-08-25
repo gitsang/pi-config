@@ -157,6 +157,7 @@ export default function (pi: ExtensionAPI) {
 			'- chain: agents run sequentially; later tasks can reference {previous} output (use chain array).',
 			'- discuss: multiple agents discuss a topic with a centralized moderator (use topic + agents + termination).',
 			"Each agent is a markdown file with YAML frontmatter. Agent scope defaults to user (~/.pi/agent/agents).",
+			"Extra agents may live in <cwd>/.pi-multi-agent/agents; they are cwd-local and useful for one-off or experimental agents.",
 		].join("\n"),
 		parameters: DelegateParams,
 
@@ -207,8 +208,14 @@ export default function (pi: ExtensionAPI) {
 							: mode === "parallel"
 								? "Parallel mode requires a non-empty tasks array."
 								: "Chain mode requires a non-empty chain array.";
+				const dirHint =
+					agentScope === "project"
+						? "Project agents: <cwd>/.pi/agents"
+						: agentScope === "both"
+							? "Agent dirs: ~/.pi/agent/agents, <cwd>/.pi/agents, <cwd>/.pi-multi-agent/agents"
+							: "Agent dirs: ~/.pi/agent/agents and <cwd>/.pi-multi-agent/agents";
 				return {
-					content: [{ type: "text", text: `Invalid delegate parameters: ${hint}\nAvailable agents: ${available}` }],
+					content: [{ type: "text", text: `Invalid delegate parameters: ${hint}\n${dirHint}\nAvailable agents: ${available}` }],
 					details: { ...detailsBase, results: [] },
 					isError: true,
 				} as AgentToolResult<DelegateDetails>;

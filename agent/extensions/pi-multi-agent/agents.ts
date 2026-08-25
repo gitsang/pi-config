@@ -4,6 +4,7 @@
  * Sources:
  *   - user:    ~/.pi/agent/agents/*.md
  *   - project: nearest <cwd>/.pi/agents/*.md (walking up)
+ *   - extra:   <cwd>/.pi-multi-agent/agents/*.md
  *
  * Frontmatter fields:
  *   name:        string (required)
@@ -119,22 +120,20 @@ function findNearestProjectAgentsDir(cwd: string): string | null {
 export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryResult {
 	const userDir = path.join(getAgentDir(), "agents");
 	const projectAgentsDir = findNearestProjectAgentsDir(cwd);
+	const extraAgentsDir = path.join(cwd, ".pi-multi-agent", "agents");
 
 	const userAgents = scope === "project" ? [] : loadAgentsFromDir(userDir, "user");
 	const projectAgents =
 		scope === "user" || !projectAgentsDir ? [] : loadAgentsFromDir(projectAgentsDir, "project");
+	// Extra agents are always cwd-local and available regardless of scope.
+	const extraAgents = loadAgentsFromDir(extraAgentsDir, "user");
 
 	const agentMap = new Map<string, AgentConfig>();
 
-	if (scope === "both") {
-		for (const agent of userAgents) agentMap.set(agent.name, agent);
-		// project overrides user on name conflicts
-		for (const agent of projectAgents) agentMap.set(agent.name, agent);
-	} else if (scope === "user") {
-		for (const agent of userAgents) agentMap.set(agent.name, agent);
-	} else {
-		for (const agent of projectAgents) agentMap.set(agent.name, agent);
-	}
+	// Lower priority first: extra < user < project.
+	for (const agent of extraAgents) agentMap.set(agent.name, agent);
+	for (const agent of userAgents) agentMap.set(agent.name, agent);
+	for (const agent of projectAgents) agentMap.set(agent.name, agent);
 
 	const agents = Array.from(agentMap.values()).sort((a, b) => a.name.localeCompare(b.name));
 	return { agents, projectAgentsDir };
