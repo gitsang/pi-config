@@ -125,7 +125,7 @@
     "elapsed": {
       "source": "task.elapsedTotal",
       "glyph": "\uf520",
-      "format": "sec0",
+      "format": "hms",
       "nullText": "0s",
       "color": "yellow"
     },

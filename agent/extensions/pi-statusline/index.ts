@@ -74,6 +74,15 @@ function fmtTok(n: number): string {
 	if (n < 10000000) return `${(n / 1000000).toFixed(1)}M`;
 	return `${Math.round(n / 1000000)}M`;
 }
+function fmtHms(ms: number): string {
+	const totalSec = Math.max(0, Math.round(ms / 1000));
+	const h = Math.floor(totalSec / 3600);
+	const m = Math.floor((totalSec % 3600) / 60);
+	const s = totalSec % 60;
+	if (h > 0) return `${h}h${m}m${s}s`;
+	if (m > 0) return `${m}m${s}s`;
+	return `${s}s`;
+}
 function fmtCwd(cwd: string, home: string | undefined): string {
 	if (!home) return cwd;
 	const resolvedCwd = resolve(cwd);
@@ -118,7 +127,7 @@ interface ModuleConfig {
 	key?: string;        // ext-status key
 	text?: string;       // literal
 	glyph?: string;
-	format?: string;     // tok|pct|sec1|tps1|dollars3|int|ctxnums|raw
+	format?: string;     // tok|pct|sec1|hms|tps1|dollars3|int|ctxnums|raw
 	valueMap?: Record<string, string>;  // raw value -> display text/icon
 	color?: ColorSpec;
 	prefix?: string;
@@ -195,7 +204,7 @@ const DEFAULT_RAW: RawConfig = {
 		elapsed: {
 			source: "task.elapsedTotal",
 			glyph: "\uf2f2",
-			format: "sec0",
+			format: "hms",
 			nullText: "0s",
 			color: "yellow",
 		},
@@ -352,6 +361,7 @@ function formatValue(format: string | undefined, raw: any, nullText: string | un
 		case "pct": return `${Math.round(num)}%`;
 		case "sec0": return `${Math.round(num / 1000)}s`;
 		case "sec1": return `${(num / 1000).toFixed(1)}s`;
+		case "hms": return fmtHms(num);
 		case "tps1": return `${num.toFixed(1)}tok/s`;
 		case "dollars3": return `$${num.toFixed(3)}`;
 		case "int": return `${Math.round(num)}`;
