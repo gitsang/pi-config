@@ -10,9 +10,9 @@ Automatically generates short session titles for pi.
 
 ## Usage
 
-- `/auto-title` or `/auto-title regen` — generate/refresh the title now.
-- `/auto-title on` / `off` — enable/disable for the current session.
-- `/auto-title status` — show current config and state.
+- `/pi-auto-title` or `/auto-title` (aliases) — generate/refresh the title now.
+- `/pi-auto-title`/`/auto-title` `on` / `off` — enable/disable for the current session.
+- `/pi-auto-title`/`/auto-title` `status` — show current config and state.
 
 ## Configuration
 

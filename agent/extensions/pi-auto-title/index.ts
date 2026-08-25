@@ -500,52 +500,61 @@ export default function (pi: ExtensionAPI) {
 		void runGenerate(ctx, "compact", text);
 	});
 
-	pi.registerCommand("auto-title", {
-		description: "Auto session titles: [regen|on|off|status]",
-		handler: async (args, ctx) => {
-			const sub = (args.trim().split(/\s+/)[0] ?? "").toLowerCase();
+	// The extension lives in pi-auto-title/ and the status key is "pi-auto-title",
+	// but the command was historically registered as "/auto-title". Register both
+	// names so both `/pi-auto-title` and `/auto-title` work.
+	const autoTitleHandler: Parameters<ExtensionAPI["registerCommand"]>[1]["handler"] = async (args, ctx) => {
+		const sub = (args.trim().split(/\s+/)[0] ?? "").toLowerCase();
 
-			if (sub === "off") {
-				state.enabled = false;
-				notify(ctx, "pi-auto-title: disabled for this session", "info");
-				return;
-			}
-			if (sub === "on") {
-				state.enabled = true;
-				notify(ctx, "pi-auto-title: enabled", "info");
-				return;
-			}
-			if (sub === "status" || sub === "config") {
-				reloadConfig(ctx);
-				const c = state.config;
-				notify(
-					ctx,
-					[
-						`session enabled: ${state.enabled}`,
-						`current title: ${pi.getSessionName() ?? "(none)"}`,
-						`user inputs this session: ${state.roundCount}`,
-						`model: ${c.model ?? "(current model)"}`,
-						`onFirstTurn: ${c.onFirstTurn}`,
-						`onCompact: ${c.onCompact}`,
-						`refreshEveryTurns: ${c.refreshEveryTurns}`,
-						`maxTitleLength: ${c.maxTitleLength}`,
-						`language: ${c.language}`,
-						`setTerminalTitle: ${c.setTerminalTitle}`,
-						`includeAssistantOutput: ${c.includeAssistantOutput}`,
-					].join("\n"),
-					"info",
-				);
-				return;
-			}
-
-			// default / "regen" / "gen" / "now" -> regenerate immediately
+		if (sub === "off") {
+			state.enabled = false;
+			notify(ctx, "pi-auto-title: disabled for this session", "info");
+			return;
+		}
+		if (sub === "on") {
+			state.enabled = true;
+			notify(ctx, "pi-auto-title: enabled", "info");
+			return;
+		}
+		if (sub === "status" || sub === "config") {
 			reloadConfig(ctx);
-			const text = buildConversationText(ctx, state.config.includeAssistantOutput);
-			if (!text.trim()) {
-				notify(ctx, "pi-auto-title: no conversation to title yet", "warning");
-				return;
-			}
-			await runGenerate(ctx, "manual", text);
-		},
+			const c = state.config;
+			notify(
+				ctx,
+				[
+					`session enabled: ${state.enabled}`,
+					`current title: ${pi.getSessionName() ?? "(none)"}`,
+					`user inputs this session: ${state.roundCount}`,
+					`model: ${c.model ?? "(current model)"}`,
+					`onFirstTurn: ${c.onFirstTurn}`,
+					`onCompact: ${c.onCompact}`,
+					`refreshEveryTurns: ${c.refreshEveryTurns}`,
+					`maxTitleLength: ${c.maxTitleLength}`,
+					`language: ${c.language}`,
+					`setTerminalTitle: ${c.setTerminalTitle}`,
+					`includeAssistantOutput: ${c.includeAssistantOutput}`,
+				].join("\n"),
+				"info",
+			);
+			return;
+		}
+
+		// default / "regen" / "gen" / "now" -> regenerate immediately
+		reloadConfig(ctx);
+		const text = buildConversationText(ctx, state.config.includeAssistantOutput);
+		if (!text.trim()) {
+			notify(ctx, "pi-auto-title: no conversation to title yet", "warning");
+			return;
+		}
+		await runGenerate(ctx, "manual", text);
+	};
+
+	pi.registerCommand("pi-auto-title", {
+		description: "Auto session titles: [regen|on|off|status] (alias: /auto-title)",
+		handler: autoTitleHandler,
+	});
+	pi.registerCommand("auto-title", {
+		description: "Auto session titles: [regen|on|off|status] (alias: /pi-auto-title)",
+		handler: autoTitleHandler,
 	});
 }

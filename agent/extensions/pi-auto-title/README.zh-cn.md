@@ -10,9 +10,9 @@
 
 ## 使用
 
-- `/auto-title` 或 `/auto-title regen` — 立即生成/刷新标题。
-- `/auto-title on` / `off` — 启用/禁用本次会话自动标题。
-- `/auto-title status` — 查看当前配置与状态。
+- `/pi-auto-title` 或 `/auto-title`（互为别名）— 立即生成/刷新标题。
+- `/pi-auto-title`/`/auto-title` `on` / `off` — 启用/禁用本次会话自动标题。
+- `/pi-auto-title`/`/auto-title` `status` — 查看当前配置与状态。
 
 ## 配置
 
