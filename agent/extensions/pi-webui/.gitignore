@@ -1,4 +1,4 @@
-pi-webui
+/pi-webui
 dist/
 web/node_modules/
 web/dist/
