@@ -189,6 +189,21 @@ function isCommandInput(text: string): boolean {
 const ELLIPSIS = "…";
 
 /**
+ * Remove <thinking>/<reasoning> sections from a text block.
+ *
+ * Some endpoints (notably certain vLLM builds for Qwen3 models) inline the
+ * model's chain of thought into the regular content text. Closed pairs are
+ * removed; an opening tag without a closing one (happens when generation is
+ * truncated mid-thought) is stripped through the end of the block.
+ */
+function stripThinkingTags(text: string): string {
+	return text
+		.replace(/<\s*(?:thinking|reasoning)\b[^>]*>[\s\S]*?<\s*\/\s*(?:thinking|reasoning)\s*>/gi, " ")
+		.replace(/<\s*(?:thinking|reasoning)\b[\s\S]*$/gi, " ")
+		.trim();
+}
+
+/**
  * Terminal display-width helpers.
  *
  * We approximate the width a modern terminal gives a Unicode code point:
@@ -378,17 +393,26 @@ export default function (pi: ExtensionAPI) {
 			"</conversation>",
 		].join("\n");
 
+		// Two thinking-model defenses:
+		// - reasoning: "off" tells providers that model it (e.g. vLLM + Qwen via
+		//   compat.thinkingFormat) to skip the thinking phase entirely.
+		// - maxTokens must leave room for thinking on servers that ignore the
+		//   "off" request: at 64 tokens the thought consumes the whole budget
+		//   and the response is truncated mid-thought, leaving no title at all.
 		const response = await complete(
 			model,
 			{ messages: [{ role: "user", content: [{ type: "text" as const, text: prompt }], timestamp: Date.now() }] },
-			{ apiKey: auth.apiKey, headers: auth.headers, env: auth.env, maxTokens: 64 },
+			{ apiKey: auth.apiKey, headers: auth.headers, env: auth.env, maxTokens: 512, reasoning: "off" as const },
 		);
 		if (!isCurrent()) return;
 
+		// Thinking blocks are excluded; text blocks get inline thinking stripped
+		// (see stripThinkingTags) in case the server put it into content.
 		const title = cleanupTitle(
 			response.content
 				.filter((c): c is { type: "text"; text: string } => c.type === "text")
-				.map((c) => c.text)
+				.map((c) => stripThinkingTags(c.text))
+				.filter((text) => text.length > 0)
 				.join(" "),
 			cfg.maxTitleLength,
 		);

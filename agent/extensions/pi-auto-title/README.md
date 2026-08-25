@@ -19,3 +19,5 @@ Automatically generates short session titles for pi.
 Reads `config.json` next to this extension; project override: `<cwd>/.pi/pi-auto-title.json` (trusted projects only). See `config.example.json` for all fields (`model`, `onFirstTurn`, `onCompact`, `refreshEveryTurns`, `maxTitleLength`, `language`, `setTerminalTitle`, `includeAssistantOutput`).
 
 `maxTitleLength` is measured in terminal display columns: CJK/wide/fullwidth glyphs count as 2, combining marks count as 0, and regular characters count as 1.
+
+Thinking models (Qwen3, DeepSeek, …) are handled: title requests ask the provider to turn thinking off (only effective if the model entry in `models.json` sets the right `compat.thinkingFormat`, e.g. `"qwen-chat-template"` for vLLM + Qwen), use a 512-token budget so a stray thinking phase can't truncate the response, and strip inline `<thinking>`/`<reasoning>` text from the answer.

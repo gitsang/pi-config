@@ -11,9 +11,20 @@
  *     and `/thinking`) writes the new level via `setDefaultThinkingLevel()`
  *     whenever the level actually changes.
  *
- * This extension restores the previous default right after each write lands,
- * so the in-session model/thinking level still changes but the persisted
- * defaults are preserved.
+ * This extension restores the previous default after each write lands, so the
+ * in-session model/thinking level still changes but the persisted defaults
+ * are preserved.
+ *
+ * Picker race (why there is a settle delay): the model selector
+ * (`Ctrl+L` / `/model` list) writes the new default DIRECTLY in
+ * `ModelSelectorComponent.handleSelect()` before calling
+ * `session.setModel()`, which queues another write of the same value. If the
+ * restore ran as soon as the file shows the new model, it would land BEFORE
+ * setModel's queued writes and be overwritten by them. Cycling (`Ctrl+P` /
+ * user-mapped keys) has no such early write, so it never hit this race. The
+ * handler therefore waits for pi's write queue to drain (SETTLE_MS) after
+ * detecting the write, restores, then verifies once and re-restores if a
+ * late queued write landed after the restore.
  *
  * Behavior is driven entirely by the sibling `config.json`:
  *
@@ -164,6 +175,11 @@ function protectedDefaultFromSettings(s: Settings | null): ProtectedDefault | nu
   };
 }
 
+// How long to wait after detecting pi's settings write before restoring,
+// so any writes still queued in pi's writeQueue (see the picker race in the
+// header) land first. pi's queue drains in a few ms; this is a large margin.
+const SETTLE_MS = 250;
+
 export default function (pi: ExtensionAPI) {
   // The global default captured at session start. This is the value we
   // restore to after pi overwrites it on a model switch.
@@ -195,7 +211,11 @@ export default function (pi: ExtensionAPI) {
 
     // Wait for pi's settings write to land (file reflects the switched-to
     // model). pi enqueues the write as a microtask before emitting this
-    // event, so it may already be done or may take a tick or two.
+    // event, so it may already be done or may take a tick or two. NOTE: the
+    // model selector writes the new default directly (handleSelect) BEFORE
+    // session.setModel() queues its own write of the same value, so this
+    // check can be satisfied by the early write while setModel's queued
+    // writes are still in flight — the settle delay below covers that.
     const deadline = 100;
     let landed = false;
     for (let i = 0; i < deadline; i++) {
@@ -212,15 +232,25 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    // Restore the protected default, preserving every other field.
+    // Let pi's writeQueue drain (see picker race in the header), then
+    // restore the protected default, preserving every other field.
+    await sleep(SETTLE_MS);
     const s = readSettings();
     if (!s) return;
-    if (s.defaultProvider === target.provider && s.defaultModel === target.model) {
-      return; // already correct (e.g. another handler restored first)
+    if (s.defaultProvider !== target.provider || s.defaultModel !== target.model) {
+      s.defaultProvider = target.provider;
+      s.defaultModel = target.model;
+      writeSettings(s);
     }
-    s.defaultProvider = target.provider;
-    s.defaultModel = target.model;
-    writeSettings(s);
+
+    // Verify once: if a queued write landed after our restore, re-restore.
+    await sleep(SETTLE_MS);
+    const s2 = readSettings();
+    if (s2 && (s2.defaultProvider !== target.provider || s2.defaultModel !== target.model)) {
+      s2.defaultProvider = target.provider;
+      s2.defaultModel = target.model;
+      writeSettings(s2);
+    }
 
     if (ctx.hasUI) {
       ctx.ui.notify(

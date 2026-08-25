@@ -19,3 +19,5 @@
 读取本扩展目录下的 `config.json`；项目级覆盖：`<cwd>/.pi/pi-auto-title.json`（仅受信任项目）。所有字段见 `config.example.json`（`model`、`onFirstTurn`、`onCompact`、`refreshEveryTurns`、`maxTitleLength`、`language`、`setTerminalTitle`、`includeAssistantOutput`）。
 
 `maxTitleLength` 按终端显示列数计算：CJK/全角/宽字符计 2 列，组合标记计 0 列，普通字符计 1 列。
+
+思考型模型（Qwen3、DeepSeek 等）已做处理：生成标题时会要求 provider 关闭 thinking（仅当 `models.json` 中该模型配置了对应的 `compat.thinkingFormat` 才生效，例如 vLLM + Qwen 用 `"qwen-chat-template"`）、使用 512 token 预算防止思考阶段把响应截断、并剥离回答中内联的 `<thinking>`/`<reasoning>` 文本。

@@ -15,3 +15,14 @@ It snapshots the global defaults at session start and restores them after each m
 `config.json` next to this extension:
 - `{ "enable": true }` — restore defaults after each switch (default)
 - `{ "enable": false }` — do nothing; pi's built-in behavior applies
+
+## How it handles the model picker race
+
+The model selector (`Ctrl+L` / `/model` list) writes the new default directly to
+`settings.json` *before* `session.setModel()` runs, and `setModel()` then queues
+another write of the same value. A restore that fires as soon as the file shows
+the new model lands *before* the queued write and gets overwritten — so this
+extension waits for pi's write queue to drain after detecting the write,
+restores, and verifies once more. Cycling (`Ctrl+P` / custom keys) has no early
+write and never hit this race, which is why only the picker path failed before
+the fix.

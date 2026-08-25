@@ -557,8 +557,14 @@ let requestStart: number | null = null;
 let msgStart: number | null = null;
 let firstToken: number | null = null;
 let lastTiming: { ttft: number | null; tps: number | null } = { ttft: null, tps: null };
-const tpsHistory: number[] = [];
+// Aggregate (weighted) TPS: Σ output tokens / Σ generation ms — robust against
+// burst-delivered responses, unlike a mean of per-message rates.
+let tpsOutSum = 0;
+let tpsMsSum = 0;
 const ttftHistory: number[] = [];
+// No real model sustains this; above it the "first token → end" window must be
+// an artifact of a buffering gateway that flushes the whole response at once.
+const MAX_PLAUSIBLE_TPS = 1000;
 
 // ─── task elapsed timing state ───────────────────────────────────────────────
 let taskStartedAt: number | null = null;
@@ -588,7 +594,7 @@ function buildSourceContext(ctx: any, footerData: any): SourceContext {
 	const usage = computeUsage(ctx);
 	const ctxUsage = ctx.getContextUsage();
 	const ttftAvg = ttftHistory.length ? ttftHistory.reduce((a, b) => a + b, 0) / ttftHistory.length : null;
-	const tpsAvg = tpsHistory.length ? tpsHistory.reduce((a, b) => a + b, 0) / tpsHistory.length : null;
+	const tpsAvg = tpsMsSum > 0 ? tpsOutSum / (tpsMsSum / 1000) : null;
 	const taskElapsed = taskStartedAt !== null ? Date.now() - taskStartedAt : lastTaskElapsedMs;
 	const taskElapsedTotal = sessionTaskTotalMs + (taskStartedAt !== null ? Date.now() - taskStartedAt : 0);
 	return { ctx, footerData, model: ctx.model, usage, ctxUsage, timing: lastTiming, timingAvg: { ttft: ttftAvg, tps: tpsAvg }, task: { elapsed: taskElapsed, elapsedTotal: taskElapsedTotal } };
@@ -701,14 +707,29 @@ export default function (pi: ExtensionAPI): void {
 	});
 	pi.on("message_end", (e: any) => {
 		const msg = e?.message;
-		const output: number = msg?.usage?.output ?? 0;
-		if (firstToken !== null && msgStart !== null) {
-			const genMs = Date.now() - firstToken;
-			const ttft = firstToken - (msgStart ?? firstToken);
-			const tps = genMs > 0 ? output / (genMs / 1000) : null;
-			lastTiming = { ttft, tps };
-			if (ttft !== null && ttft >= 0) ttftHistory.push(ttft);
-			if (tps !== null && output > 0) tpsHistory.push(tps);
+		if (msg?.role === "assistant") {
+			const output: number = msg?.usage?.output ?? 0;
+			if (firstToken !== null && msgStart !== null) {
+				const now = Date.now();
+				const ttft = firstToken - msgStart;
+				const genMs = Math.max(0, now - firstToken);
+				let tps = genMs > 0 ? output / (genMs / 1000) : null;
+				let msCounted = genMs;
+				// Buffering gateway: the entire response arrived in one burst, so
+				// "first token → end" is ~0. Fall back to end-to-end request
+				// throughput (output / time since request start) instead.
+				if (tps !== null && tps > MAX_PLAUSIBLE_TPS && now > msgStart) {
+					msCounted = now - msgStart;
+					tps = msCounted > 0 ? output / (msCounted / 1000) : null;
+				}
+				lastTiming = { ttft: ttft >= 0 ? ttft : null, tps };
+				if (ttft >= 0) ttftHistory.push(ttft);
+				if (tps !== null && output > 0 && msCounted > 0) {
+					tpsOutSum += output;
+					tpsMsSum += msCounted;
+				}
+				firstToken = null;
+			}
 		}
 		requestStart = null;
 		requestRender?.();
@@ -767,7 +788,8 @@ export default function (pi: ExtensionAPI): void {
 		description: "Reset TTFT/TPS/task-elapsed history",
 		handler: async (_args, ctx) => {
 			lastTiming = { ttft: null, tps: null };
-			tpsHistory.length = 0;
+			tpsOutSum = 0;
+			tpsMsSum = 0;
 			ttftHistory.length = 0;
 			lastTaskElapsedMs = null;
 			sessionTaskTotalMs = 0;
