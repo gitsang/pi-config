@@ -302,10 +302,6 @@ pre {
   border-radius: 999px;
 }
 
-.topbar-select .ant-select-selector {
-  border-radius: 999px !important;
-}
-
 .topbar-title {
   min-width: 0;
 }
@@ -314,14 +310,6 @@ pre {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-}
-
-.topbar-select {
-  min-width: 220px;
-}
-
-.thinking-select {
-  min-width: 140px;
 }
 
 /* ---------- Transcript ---------- */
@@ -584,11 +572,6 @@ pre {
   transition: border-color 0.2s var(--pi-ease), box-shadow 0.2s var(--pi-ease);
 }
 
-.composer-card:focus-within {
-  border-color: var(--pi-primary);
-  box-shadow: 0 6px 28px rgba(65, 118, 230, 0.12);
-}
-
 .composer-textarea,
 .composer-textarea:focus {
   background: transparent;
@@ -604,10 +587,44 @@ pre {
   color: var(--pi-text-caption);
 }
 
+.composer-textarea.ant-input,
+.composer-textarea.ant-input:focus {
+  background: transparent;
+  box-shadow: none;
+}
+
+.composer .ant-input-textarea-affix-wrapper,
+.composer .ant-input-textarea-affix-wrapper:focus,
+.composer .ant-input-textarea-affix-wrapper-focused {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+}
+
 .composer-actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
   padding: 0 12px 10px;
+}
+
+.composer-controls {
+  flex-wrap: wrap;
+}
+
+.composer-select .ant-select-selector {
+  border-radius: 999px !important;
+}
+
+.composer-select {
+  min-width: 180px;
+}
+
+.effort-select {
+  min-width: 130px;
 }
 
 @media (max-width: 900px) {

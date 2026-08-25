@@ -700,23 +700,6 @@ function App({
             )}
           </div>
           <Space wrap className="topbar-controls">
-            <Select
-              value={selectedModel || undefined}
-              onChange={(value) => void handleModelChange(value)}
-              options={modelOptions}
-              placeholder="选择模型"
-              className="topbar-select"
-              popupMatchSelectWidth={false}
-            />
-            <Select
-              value={selectedThinking || undefined}
-              onChange={(value) => void handleThinkingChange(value)}
-              options={thinkingOptions}
-              placeholder="thinking"
-              className="topbar-select thinking-select"
-              popupMatchSelectWidth={false}
-              allowClear
-            />
             {activeBsid && (
               <>
                 <Tooltip title="重命名会话">
@@ -724,9 +707,6 @@ function App({
                     重命名
                   </Button>
                 </Tooltip>
-                <Button danger icon={<StopOutlined />} disabled={!busy} onClick={handleAbort}>
-                  中止
-                </Button>
                 <Button icon={<CloseOutlined />} onClick={handleCloseActive}>
                   关闭
                 </Button>
@@ -781,6 +761,30 @@ function App({
               autoSize={{ minRows: 2, maxRows: 8 }}
             />
             <div className="composer-actions">
+              <Space wrap className="composer-controls">
+                <Select
+                  value={selectedModel || undefined}
+                  onChange={(value) => void handleModelChange(value)}
+                  options={modelOptions}
+                  placeholder="选择模型"
+                  className="composer-select"
+                  popupMatchSelectWidth={false}
+                />
+                <Select
+                  value={selectedThinking || undefined}
+                  onChange={(value) => void handleThinkingChange(value)}
+                  options={thinkingOptions}
+                  placeholder="effort"
+                  className="composer-select effort-select"
+                  popupMatchSelectWidth={false}
+                  allowClear
+                />
+                {activeBsid && (
+                  <Button danger icon={<StopOutlined />} disabled={!busy} onClick={handleAbort}>
+                    中止
+                  </Button>
+                )}
+              </Space>
               <Button
                 type="primary"
                 shape="round"
