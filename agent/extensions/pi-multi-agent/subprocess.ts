@@ -2,7 +2,8 @@
  * Subprocess execution for pi-multi-agent.
  *
  * Each agent task runs in an isolated `pi` child process:
- *   pi --mode json -p --no-session [--model ...] [--tools ...]
+ *   pi --mode json -p --session-dir ~/.pi/agent/sessions-multi-agent
+ *       [--model ...] [--tools ...]
  *       [--append-system-prompt <tmpfile>] <task prompt>
  *
  * We parse stdout as JSONL to collect messages and usage, stream partial
@@ -176,7 +177,7 @@ export async function runAgentTask(opts: RunAgentTaskOptions): Promise<TaskResul
 		}
 	};
 
-	const args: string[] = ["--mode", "json", "-p", "--no-session"];
+	const args: string[] = ["--mode", "json", "-p", "--session-dir", path.join(getAgentDir(), "sessions-multi-agent")];
 	if (opts.model) args.push("--model", opts.model);
 
 	const toolList = opts.tools !== undefined ? opts.tools : agent.tools;
