@@ -23,6 +23,10 @@
       "sepLeft": "  ",
       "right": ["todayTok", "todayCost"],
       "sepRight": " "
+    },
+    {
+      "full": ["fleet"],
+      "sep": "  "
     }
   ],
   "modules": {
@@ -213,6 +217,19 @@
       "format": "dollars3",
       "nullText": "",
       "color": "orange"
+    },
+    "fleet": {
+      "source": "ext-status",
+      "key": "pi-multi-agent-fleet",
+      "glyph": "\uf0c0",
+      "nullText": "",
+      "color": {
+        "map": {
+          "running": "cyan",
+          "mixed": "yellow"
+        },
+        "default": "green"
+      }
     }
   },
   "focus": {
@@ -246,6 +263,7 @@
     "tps": 95,
     "tpsAvg": 30,
     "todayTok": 80,
-    "todayCost": 75
+    "todayCost": 75,
+    "fleet": 110
   }
 }

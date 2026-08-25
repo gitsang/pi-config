@@ -17,6 +17,7 @@ import {
 	type TaskResult,
 	type UsageStats,
 } from "./subprocess.ts";
+import type { FleetStore } from "./fleet.ts";
 
 export type DelegateMode = "single" | "parallel" | "chain" | "discuss";
 
@@ -142,6 +143,8 @@ interface RunTaskOptions {
 	signal?: AbortSignal;
 	onUpdate?: (result: TaskResult) => void;
 	depth: number;
+	fleet?: FleetStore;
+	mode?: string;
 }
 
 async function runTaskWithAgent(
@@ -164,6 +167,8 @@ async function runTaskWithAgent(
 		onUpdate: opts.onUpdate,
 		timeoutMs: config.perTaskTimeoutMs,
 		depth: opts.depth,
+		fleet: opts.fleet,
+		mode: opts.mode,
 	});
 }
 
@@ -250,6 +255,7 @@ export async function runSingleMode(
 	signal: AbortSignal | undefined,
 	onUpdate: ModeUpdateCallback | undefined,
 	depth: number,
+	fleet?: FleetStore,
 ): Promise<ModeOutcome> {
 	const details: DelegateDetails = {
 		mode: "single",
@@ -273,6 +279,8 @@ export async function runSingleMode(
 		model: params.model,
 		signal,
 		depth,
+		fleet: fleet,
+		mode: "single",
 		onUpdate: (r) => {
 			if (onUpdate) {
 				details.results = [r];
@@ -302,6 +310,7 @@ export async function runParallelMode(
 	signal: AbortSignal | undefined,
 	onUpdate: ModeUpdateCallback | undefined,
 	depth: number,
+	fleet?: FleetStore,
 ): Promise<ModeOutcome> {
 	const details: DelegateDetails = {
 		mode: "parallel",
@@ -366,6 +375,8 @@ export async function runParallelMode(
 			model: t.model,
 			signal,
 			depth,
+			fleet: fleet,
+			mode: "parallel",
 			onUpdate: (r) => {
 				allResults[index] = r;
 				emitProgress();
@@ -405,6 +416,7 @@ export async function runChainMode(
 	signal: AbortSignal | undefined,
 	onUpdate: ModeUpdateCallback | undefined,
 	depth: number,
+	fleet?: FleetStore,
 ): Promise<ModeOutcome> {
 	const details: DelegateDetails = {
 		mode: "chain",
@@ -436,6 +448,8 @@ export async function runChainMode(
 			model: step.model,
 			signal,
 			depth,
+			fleet: fleet,
+			mode: "chain",
 			onUpdate: (r) => {
 				if (!onUpdate) return;
 				const all = [...results, r];
@@ -579,6 +593,7 @@ export async function runDiscussMode(
 	signal: AbortSignal | undefined,
 	onUpdate: ModeUpdateCallback | undefined,
 	depth: number,
+	fleet?: FleetStore,
 ): Promise<ModeOutcome> {
 	const details: DelegateDetails = {
 		mode: "discuss",
@@ -660,6 +675,8 @@ export async function runDiscussMode(
 					taskPrompt,
 					signal,
 					depth,
+					fleet: fleet,
+					mode: "discuss",
 				});
 			},
 		);
@@ -721,6 +738,8 @@ export async function runDiscussMode(
 			signal,
 			timeoutMs: config.perTaskTimeoutMs,
 			depth,
+			fleet: fleet,
+			mode: "discuss-moderator",
 		});
 
 		totalTokens += moderatorResult.usage.totalTokens;

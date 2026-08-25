@@ -14,6 +14,8 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { discoverAgents, type AgentScope } from "./agents.ts";
 import { loadConfig, type MultiAgentConfig } from "./config.ts";
+import { FleetStore, registerFleetCommand } from "./fleet.ts";
+import { formatFleetSummary, type FleetRecord } from "./fleet.ts";
 import {
 	runChainMode,
 	runDiscussMode,
@@ -118,6 +120,9 @@ function getDepth(): number {
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
+/** ext-status key consumed by pi-statusline. */
+const FLEET_STATUS_KEY = "pi-multi-agent-fleet";
+
 function requestedAgentNames(params: DelegateParamsShape): string[] {
 	const names: string[] = [];
 	if (params.agent) names.push(params.agent);
@@ -139,6 +144,27 @@ function wrapOutcome(outcome: ModeOutcome): AgentToolResult<DelegateDetails> {
 export default function (pi: ExtensionAPI) {
 	const config: MultiAgentConfig = loadConfig();
 	const depth = getDepth();
+	const fleet = new FleetStore();
+
+	// In-process fleet panel: /delegate-fleet [filter|clear]
+	registerFleetCommand(pi, fleet);
+
+	// Publish fleet status to statusline via ext-status. The value is a
+	// compact running summary; undefined hides the statusline module (nullText).
+	const publishFleetStatus = (ctx: ExtensionContext): void => {
+		if (!ctx.hasUI) return;
+		const records = fleet.list();
+		if (records.length === 0) {
+			ctx.ui.setStatus(FLEET_STATUS_KEY, undefined);
+			return;
+		}
+		const running = records.filter((r) => r.status === "running");
+		const failed = records.filter((r) => r.status === "failed");
+		const completed = records.filter((r) => r.status === "completed");
+		let value = `${running.length}R/${completed.length}D/${failed.length}F`;
+		if (running.length > 0) value += ` · ${running.map((r) => r.agent).join(",")}`;
+		ctx.ui.setStatus(FLEET_STATUS_KEY, value);
+	};
 
 	// Recursive delegation guard: when the child process reaches maxDepth, do
 	// not expose the delegate tool, so sub-agents cannot delegate further.
@@ -172,6 +198,7 @@ export default function (pi: ExtensionAPI) {
 			const discovery = discoverAgents(ctx.cwd, agentScope);
 			const agents = discovery.agents;
 			const confirmProjectAgents = params.confirmProjectAgents ?? true;
+			publishFleetStatus(ctx);
 
 			const mode = params.mode;
 			const detailsBase: DelegateDetails = {
@@ -269,6 +296,7 @@ export default function (pi: ExtensionAPI) {
 					signal,
 					update,
 					depth,
+					fleet,
 				);
 			} else if (mode === "parallel") {
 				outcome = await runParallelMode(
@@ -280,6 +308,7 @@ export default function (pi: ExtensionAPI) {
 					signal,
 					update,
 					depth,
+					fleet,
 				);
 			} else if (mode === "chain") {
 				outcome = await runChainMode(
@@ -291,6 +320,7 @@ export default function (pi: ExtensionAPI) {
 					signal,
 					update,
 					depth,
+					fleet,
 				);
 			} else {
 				outcome = await runDiscussMode(
@@ -307,11 +337,13 @@ export default function (pi: ExtensionAPI) {
 					signal,
 					update,
 					depth,
+					fleet,
 				);
 			}
 
 			outcome.details.agentScope = agentScope;
 			outcome.details.projectAgentsDir = discovery.projectAgentsDir;
+			publishFleetStatus(ctx);
 			return wrapOutcome(outcome);
 		},
 	});

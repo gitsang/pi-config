@@ -15,8 +15,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { Message } from "@earendil-works/pi-ai";
-import { truncateHead, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, truncateHead, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig } from "./agents.ts";
+import type { FleetStore } from "./fleet.ts";
 
 export interface UsageStats {
 	input: number;
@@ -62,6 +63,10 @@ export interface RunAgentTaskOptions {
 	onUpdate?: (result: TaskResult) => void;
 	timeoutMs: number;
 	depth: number;
+	/** Optional in-process fleet tracker. */
+	fleet?: FleetStore;
+	/** Fleet display mode. */
+	mode?: string;
 }
 
 export function zeroUsage(): UsageStats {
@@ -172,6 +177,13 @@ export async function runAgentTask(opts: RunAgentTaskOptions): Promise<TaskResul
 	};
 
 	const emitUpdate = () => {
+		if (opts.fleet) {
+			opts.fleet.update(fleetId, {
+				usage: { ...currentResult.usage },
+				model: currentResult.model ?? opts.model,
+				errorMessage: currentResult.errorMessage,
+			});
+		}
 		if (opts.onUpdate) {
 			opts.onUpdate({ ...currentResult, messages: [...currentResult.messages] });
 		}
@@ -179,6 +191,14 @@ export async function runAgentTask(opts: RunAgentTaskOptions): Promise<TaskResul
 
 	const args: string[] = ["--mode", "json", "-p", "--session-dir", path.join(getAgentDir(), "sessions-multi-agent")];
 	if (opts.model) args.push("--model", opts.model);
+
+	const fleetId = opts.fleet?.start({
+		mode: opts.mode ?? "single",
+		agent: agent.name,
+		model: opts.model,
+		cwd: opts.taskCwd ?? opts.cwd,
+		task: opts.task,
+	}).id;
 
 	const toolList = opts.tools !== undefined ? opts.tools : agent.tools;
 	if (toolList && toolList.length > 0) args.push("--tools", toolList.join(","));
@@ -229,6 +249,10 @@ export async function runAgentTask(opts: RunAgentTaskOptions): Promise<TaskResul
 					PI_MULTI_AGENT_DEPTH: String(opts.depth + 1),
 				},
 			});
+
+			if (opts.fleet && proc.pid) {
+				opts.fleet.update(fleetId, { pid: proc.pid });
+			}
 
 			let buffer = "";
 
@@ -330,6 +354,13 @@ export async function runAgentTask(opts: RunAgentTaskOptions): Promise<TaskResul
 					currentResult.stopReason = "aborted";
 				}
 				emitUpdate();
+				if (opts.fleet) {
+					opts.fleet.finish(fleetId, isFailedResult(currentResult) ? "failed" : "completed", {
+						usage: { ...currentResult.usage },
+						model: currentResult.model ?? opts.model,
+						errorMessage: currentResult.errorMessage,
+					});
+				}
 				finish();
 			});
 
@@ -338,6 +369,13 @@ export async function runAgentTask(opts: RunAgentTaskOptions): Promise<TaskResul
 				currentResult.errorMessage = err.message;
 				currentResult.stderr += `${err.message}\n`;
 				emitUpdate();
+				if (opts.fleet) {
+					opts.fleet.finish(fleetId, "failed", {
+						usage: { ...currentResult.usage },
+						model: currentResult.model ?? opts.model,
+						errorMessage: currentResult.errorMessage,
+					});
+				}
 				finish();
 			});
 		});
