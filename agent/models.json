@@ -334,6 +334,24 @@
           }
         },
         {
+          "id": "ox-alpha",
+          "name": "Ox Alpha",
+          "contextWindow": 1048576,
+          "maxTokens": 131072,
+          "input": ["text", "image"],
+          "reasoning": true,
+          "compat": {
+            "supportsDeveloperRole": false,
+            "thinkingFormat": "openrouter"
+          },
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        },
+        {
           "id": "ratatosk",
           "name": "Ratatosk",
           "contextWindow": 131072,
