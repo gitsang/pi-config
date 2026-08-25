@@ -748,6 +748,7 @@ function App({
           <div className="composer-card">
             <Input.TextArea
               className="composer-textarea"
+              classNames={{ textarea: "composer-textarea" }}
               variant="borderless"
               value={input}
               onChange={(e) => setInput(e.target.value)}

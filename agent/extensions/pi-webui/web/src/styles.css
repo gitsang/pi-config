@@ -572,12 +572,24 @@ pre {
   transition: border-color 0.2s var(--pi-ease), box-shadow 0.2s var(--pi-ease);
 }
 
-.composer-textarea,
-.composer-textarea:focus {
-  background: transparent !important;
-  box-shadow: none !important;
+.composer .composer-textarea-affix,
+.composer .composer-textarea-affix:focus,
+.composer .composer-textarea-affix:focus-within,
+.composer .composer-textarea-affix-focused {
   border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+.composer .composer-textarea,
+.composer .composer-textarea:focus,
+.composer .composer-textarea:focus-visible,
+.composer .composer-textarea:active {
+  border: none !important;
+  box-shadow: none !important;
   outline: none !important;
+  background: transparent !important;
   padding: 4px 16px 0 !important;
   font-size: inherit;
   line-height: inherit;
@@ -585,30 +597,8 @@ pre {
   caret-color: var(--pi-primary);
 }
 
-.composer-textarea::placeholder {
+.composer .composer-textarea::placeholder {
   color: var(--pi-text-caption);
-}
-
-.composer .ant-input-textarea-affix-wrapper,
-.composer .ant-input-textarea-affix-wrapper:focus,
-.composer .ant-input-textarea-affix-wrapper:focus-within,
-.composer .ant-input-textarea-affix-wrapper-focused,
-.composer .ant-input-textarea-affix-wrapper-focused:focus,
-.composer .ant-input-textarea-affix-wrapper-focused:focus-within {
-  border: none !important;
-  box-shadow: none !important;
-  background: transparent !important;
-  padding: 0 !important;
-}
-
-.composer .ant-input-textarea-affix-wrapper textarea.ant-input,
-.composer .ant-input-textarea-affix-wrapper textarea.ant-input:focus,
-.composer .ant-input-textarea-affix-wrapper textarea.ant-input:focus-visible,
-.composer .ant-input-textarea-affix-wrapper textarea.ant-input:active {
-  border: none !important;
-  box-shadow: none !important;
-  outline: none !important;
-  background: transparent !important;
 }
 
 .composer-actions {
