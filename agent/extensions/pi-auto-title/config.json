@@ -1,8 +1,8 @@
 {
-  "model": "",
+  "model": "saigw/deepseek-v4-flash",
   "onFirstTurn": true,
   "onCompact": true,
-  "refreshEveryTurns": 1,
+  "refreshEveryTurns": 2,
   "maxTitleLength": 35,
   "language": "auto",
   "setTerminalTitle": false,
