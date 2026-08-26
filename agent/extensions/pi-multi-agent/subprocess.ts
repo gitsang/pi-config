@@ -2,7 +2,7 @@
  * Subprocess execution for pi-multi-agent.
  *
  * Each agent task runs in an isolated `pi` child process:
- *   pi --mode json -p --session-dir ~/.pi/agent/sessions-multi-agent
+ *   pi --mode json -p --session-dir <cwd>/.pi-multi-agent/sessions
  *       [--model ...] [--tools ...]
  *       [--append-system-prompt <tmpfile>] <task prompt>
  *
@@ -15,7 +15,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { Message } from "@earendil-works/pi-ai";
-import { getAgentDir, truncateHead, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { truncateHead, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig } from "./agents.ts";
 import type { FleetStore } from "./fleet.ts";
 
@@ -189,7 +189,13 @@ export async function runAgentTask(opts: RunAgentTaskOptions): Promise<TaskResul
 		}
 	};
 
-	const args: string[] = ["--mode", "json", "-p", "--session-dir", path.join(getAgentDir(), "sessions-multi-agent")];
+	const sessionDir = path.join(opts.cwd, ".pi-multi-agent", "sessions");
+	try {
+		fs.mkdirSync(sessionDir, { recursive: true });
+	} catch {
+		// fall through; pi may still be able to create the session file itself
+	}
+	const args: string[] = ["--mode", "json", "-p", "--session-dir", sessionDir];
 	if (opts.model) args.push("--model", opts.model);
 
 	const fleetId = opts.fleet?.start({
