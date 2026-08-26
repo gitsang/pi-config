@@ -334,30 +334,21 @@
           }
         },
         {
-          "id": "ox-alpha",
-          "name": "Ox Alpha",
-          "contextWindow": 1048576,
-          "maxTokens": 131072,
+          "id": "squirrel",
+          "name": "Squirrel",
+          "contextWindow": 262144,
+          "maxTokens": 32768,
           "input": ["text", "image"],
           "reasoning": true,
-          "compat": {
-            "supportsDeveloperRole": false,
-            "thinkingFormat": "openrouter"
+          "thinkingLevelMap": {
+            "off": "off",
+            "minimal": null,
+            "low": "low",
+            "medium": "medium",
+            "high": null,
+            "xhigh": "xhigh",
+            "max": null
           },
-          "cost": {
-            "input": 0,
-            "output": 0,
-            "cacheRead": 0,
-            "cacheWrite": 0
-          }
-        },
-        {
-          "id": "ratatosk",
-          "name": "Ratatosk",
-          "contextWindow": 131072,
-          "maxTokens": 16384,
-          "input": ["text", "image"],
-          "reasoning": true,
           "cost": {
             "input": 0,
             "output": 0,

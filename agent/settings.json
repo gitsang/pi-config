@@ -6,6 +6,8 @@
   "defaultThinkingLevel": "max",
   "hideThinkingBlock": false,
   "packages": [
-    "https://github.com/cathrynlavery/diagram-design"
+    "https://github.com/cathrynlavery/diagram-design",
+    "npm:@tintinweb/pi-tasks",
+    "npm:@tintinweb/pi-subagents"
   ]
 }
