@@ -14,13 +14,13 @@
     },
     {
       "left": ["tokIn", "tokOut", "cacheR", "cacheW", "cacheHit", "cost"],
-      "sepLeft": "  ",
+      "sepLeft": " ",
       "right": ["ctxBar", "ctxPct", "ctxNums"],
       "sepRight": " "
     },
     {
       "left": ["elapsed", "ttftAvg", "tpsAvg"],
-      "sepLeft": "  ",
+      "sepLeft": " ",
       "right": ["todayTok", "todayCost"],
       "sepRight": " "
     }
