@@ -1,13 +1,7 @@
 # ===== Secrets =====
-auth.json
-*.key
-*.pem
-*.p12
-.env
-.env.*
-
-# ===== Environment variables =====
 trust.json
+auth.json
+.env
 
 # ===== OS / editor noise =====
 .DS_Store
@@ -18,10 +12,8 @@ Thumbs.db
 *.log
 *.jsonl
 
-# ===== Binaries =====
+# ===== Articates =====
 bin/
-
-# ===== Backup files =====
 *.bak.*
 
 # ===== Runtime history =====
@@ -29,9 +21,10 @@ checkpoints/
 sessions/
 
 # ===== Agents =====
+orca-*
 .worktrees
 .omx
 .sisyphus
 .team-debate
-orca-*
-.pi-multi-agent/
+.pi-multi-agent
+.pi
