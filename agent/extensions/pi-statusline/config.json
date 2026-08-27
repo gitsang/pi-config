@@ -29,7 +29,8 @@
     "cwd": {
       "source": "session.cwd",
       "color": "fg",
-      "truncate": "start"
+      "truncate": "start",
+      "priority": 100
     },
     "piState": {
       "source": "ext-status",
@@ -46,30 +47,36 @@
           "done": "green"
         },
         "default": "fgDark"
-      }
+      },
+      "priority": 115
     },
     "autoTitle": {
       "source": "ext-status",
       "key": "pi-auto-title",
-      "color": "yellow"
+      "color": "yellow",
+      "priority": 110
     },
     "title": {
       "source": "session.name",
       "color": "yellow",
-      "truncate": "end"
+      "truncate": "end",
+      "priority": 30
     },
     "branch": {
       "source": "footer.branch",
       "glyph": "\ue725",
-      "color": "green"
+      "color": "green",
+      "priority": 60
     },
     "model": {
       "source": "model.id",
-      "color": "blue"
+      "color": "blue",
+      "priority": 95
     },
     "thinking": {
       "source": "thinking",
-      "color": "magenta"
+      "color": "magenta",
+      "priority": 40
     },
     "stier": {
       "source": "ext-status",
@@ -83,56 +90,65 @@
           "off": "comment"
         },
         "default": "fgDark"
-      }
+      },
+      "priority": 35
     },
     "tokIn": {
       "source": "usage.input",
       "glyph": "\uf01b",
       "format": "tok",
-      "color": "cyan"
+      "color": "cyan",
+      "priority": 100
     },
     "tokOut": {
       "source": "usage.output",
       "glyph": "\uf01a",
       "format": "tok",
-      "color": "green1"
+      "color": "green1",
+      "priority": 95
     },
     "cacheR": {
       "source": "usage.cacheRead",
       "glyph": "\udb84\ude5b",
       "format": "tok",
-      "color": "blue5"
+      "color": "blue5",
+      "priority": 50
     },
     "cacheW": {
       "source": "usage.cacheWrite",
       "glyph": "\udb84\ude59",
       "format": "tok",
-      "color": "purple"
+      "color": "purple",
+      "priority": 40
     },
     "cacheHit": {
       "source": "usage.ch",
       "glyph": "\uf49b",
       "format": "pct",
       "nullText": "0%",
-      "color": "yellow"
+      "color": "yellow",
+      "priority": 45
     },
     "cost": {
       "source": "usage.cost",
       "glyph": "\uef8d",
       "format": "dollars3",
-      "color": "orange"
+      "color": "orange",
+      "priority": 70
     },
     "elapsed": {
       "source": "task.elapsedTotal",
       "glyph": "\uf520",
       "format": "hms",
       "nullText": "0s",
-      "color": "yellow"
+      "color": "green1",
+      "priority": 95
     },
     "ctxLabel": {
       "source": "literal",
       "text": "ctx",
-      "color": "comment"
+      "color": "comment",
+      "priority": 100
     },
     "ctxBar": {
       "source": "ctx.bar",
@@ -143,7 +159,8 @@
           { "op": "gte", "n": 50, "color": "yellow" }
         ],
         "default": "green"
-      }
+      },
+      "priority": 60
     },
     "ctxPct": {
       "source": "ctx.percent",
@@ -155,9 +172,14 @@
           { "op": "gte", "n": 50, "color": "yellow" }
         ],
         "default": "green"
-      }
+      },
+      "priority": 95
     },
-    "ctxNums": { "source": "ctx.nums", "color": "fgDark" },
+    "ctxNums": {
+      "source": "ctx.nums",
+      "color": "fgDark",
+      "priority": 40
+    },
     "ttft": {
       "source": "ttft",
       "format": "sec1",
@@ -169,7 +191,8 @@
           { "op": "gte", "n": 1000, "color": "yellow" }
         ],
         "default": "green"
-      }
+      },
+      "priority": 100
     },
     "ttftAvg": {
       "source": "ttft.avg",
@@ -182,21 +205,24 @@
           { "op": "gte", "n": 10000, "color": "yellow" }
         ],
         "default": "green"
-      }
+      },
+      "priority": 40
     },
     "tps": {
       "source": "tps",
       "format": "tps1",
       "nullText": "0.0tok/s",
       "prefix": "speed ",
-      "color": "cyan"
+      "color": "cyan",
+      "priority": 95
     },
     "tpsAvg": {
       "source": "tps.avg",
       "glyph": "\udb81\udcc5",
       "format": "tps1",
       "nullText": "0.0tok/s",
-      "color": "cyan"
+      "color": "cyan",
+      "priority": 30
     },
     "todayTok": {
       "source": "ext-status",
@@ -204,7 +230,8 @@
       "glyph": "\uf073",
       "format": "tok",
       "nullText": "",
-      "color": "cyan"
+      "color": "cyan",
+      "priority": 80
     },
     "todayCost": {
       "source": "ext-status",
@@ -212,40 +239,13 @@
       "glyph": "\uef8d",
       "format": "dollars3",
       "nullText": "",
-      "color": "orange"
+      "color": "orange",
+      "priority": 75
     }
   },
   "focus": {
     "enabled": true,
     "dimUnfocused": true,
     "unfocusedColor": "comment"
-  },
-  "separator": { "group": "│", "item": " ", "groupColor": "dark5" },
-  "priority": {
-    "cwd": 100,
-    "branch": 60,
-    "piState": 115,
-    "autoTitle": 110,
-    "title": 30,
-    "model": 95,
-    "thinking": 40,
-    "stier": 35,
-    "tokIn": 100,
-    "tokOut": 95,
-    "cacheR": 50,
-    "cacheW": 40,
-    "cacheHit": 45,
-    "cost": 70,
-    "elapsed": 95,
-    "ctxLabel": 100,
-    "ctxBar": 60,
-    "ctxPct": 95,
-    "ctxNums": 40,
-    "ttft": 100,
-    "ttftAvg": 40,
-    "tps": 95,
-    "tpsAvg": 30,
-    "todayTok": 80,
-    "todayCost": 75
   }
 }

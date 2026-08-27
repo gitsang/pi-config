@@ -20,4 +20,8 @@ Precedence (later overrides earlier):
 
 Configs deep-merge over built-in defaults. Define `lines` and `modules`; modules use sources such as `session.cwd`, `model`, `thinking`, `usage.*`, `ctx.*`, `task.elapsed`, `task.elapsedTotal`, `ttft`, `tps`, `focus`, `ext-status`, and `literal`. See `config.example.json` for the full template.
 
+All spacing and grouping lives in `lines` — there is no global separator config. Each line accepts `sep` (spacer between same-group items), `sepLeft` / `sepRight` (per-side overrides), and `groupSep` (spacer between module groups, default `" │ "`).
+
+Each module optionally carries a `priority` number (default 50): when a line overflows, modules with priority < 90 are dropped lowest-first. Modules with `truncate: "end"` are ellipsized instead of dropped.
+
 tmux users: add `set -g focus-events on` for focus module updates.

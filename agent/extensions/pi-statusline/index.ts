@@ -135,6 +135,7 @@ interface ModuleConfig {
 	cells?: number;      // ctx.bar
 	nullText?: string;   // shown when value is null/empty ("" => drop)
 	group?: number;
+	priority?: number;   // drop priority when the line overflows (lower drops first; <90 can be dropped)
 	truncate?: "start" | "end";  // which side to ellipsis when truncated (default "end")
 }
 
@@ -145,6 +146,7 @@ interface LineConfig {
 	sep?: string;        // item spacer for this line (both sides / full)
 	sepLeft?: string;
 	sepRight?: string;
+	groupSep?: string;   // spacer between module groups on this line (default " │ ")
 }
 
 interface FocusConfig {
@@ -156,16 +158,12 @@ interface FocusConfig {
 interface RawConfig {
 	lines?: LineConfig[];
 	modules?: Record<string, ModuleConfig>;
-	separator?: { group?: string; item?: string; groupColor?: string };
-	priority?: Record<string, number>;
 	focus?: Partial<FocusConfig>;
 }
 
 interface StatuslineConfig {
 	lines: LineConfig[];
 	modules: Record<string, ModuleConfig>;
-	separator: { group: string; item: string; groupColor: string };
-	priority: Record<string, number>;
 	focus: FocusConfig;
 }
 
@@ -181,58 +179,55 @@ const DEFAULT_RAW: RawConfig = {
 		{
 			left: ["tokIn", "tokOut", "cacheR", "cacheW", "cacheHit", "cost"],
 			right: ["ctxLabel", "ctxBar", "ctxPct", "ctxNums"],
-			sepLeft: "  ", sepRight: " ",
+			sepLeft: "  ", sepRight: " ", groupSep: " │ ",
 		},
 		{ full: ["elapsed", "ttft", "ttftAvg", "tps", "tpsAvg"], sep: "  " },
 	],
 	modules: {
-		cwd: { source: "session.cwd", color: "fg", truncate: "start" },
-		title: { source: "session.name", color: "comment" },
-		branch: { source: "footer.branch", color: "green" },
-		model: { source: "model.id", color: "blue" },
-		thinking: { source: "thinking", color: "magenta" },
+		cwd: { source: "session.cwd", color: "fg", truncate: "start", priority: 100 },
+		title: { source: "session.name", color: "comment", priority: 30 },
+		branch: { source: "footer.branch", color: "green", priority: 60 },
+		model: { source: "model.id", color: "blue", priority: 95 },
+		thinking: { source: "thinking", color: "magenta", priority: 40 },
 		stier: {
 			source: "ext-status", key: "service-tier", glyph: "\uf0e7",
 			color: { map: { priority: "orange", flex: "blue", scale: "green", off: "comment" }, default: "fgDark" },
+			priority: 35,
 		},
-		tokIn: { source: "usage.input", glyph: "\uf01b", format: "tok", color: "cyan" },
-		tokOut: { source: "usage.output", glyph: "\uf01a", format: "tok", color: "green1" },
-		cacheR: { source: "usage.cacheRead", glyph: "\udb84\ude5b", format: "tok", color: "blue5" },
-		cacheW: { source: "usage.cacheWrite", glyph: "\udb84\ude59", format: "tok", color: "purple" },
-		cacheHit: { source: "usage.ch", glyph: "\uf49b", format: "pct", nullText: "0%", color: "yellow" },
-		cost: { source: "usage.cost", glyph: "\uef8d", format: "dollars3", color: "orange" },
+		tokIn: { source: "usage.input", glyph: "\uf01b", format: "tok", color: "cyan", priority: 100 },
+		tokOut: { source: "usage.output", glyph: "\uf01a", format: "tok", color: "green1", priority: 95 },
+		cacheR: { source: "usage.cacheRead", glyph: "\udb84\ude5b", format: "tok", color: "blue5", priority: 50 },
+		cacheW: { source: "usage.cacheWrite", glyph: "\udb84\ude59", format: "tok", color: "purple", priority: 40 },
+		cacheHit: { source: "usage.ch", glyph: "\uf49b", format: "pct", nullText: "0%", color: "yellow", priority: 45 },
+		cost: { source: "usage.cost", glyph: "\uef8d", format: "dollars3", color: "orange", priority: 70 },
 		elapsed: {
 			source: "task.elapsedTotal",
 			glyph: "\uf2f2",
 			format: "hms",
 			nullText: "0s",
 			color: "yellow",
+			priority: 95,
 		},
-		ctxLabel: { source: "literal", text: "ctx", color: "comment" },
+		ctxLabel: { source: "literal", text: "ctx", color: "comment", priority: 100 },
 		ctxBar: {
 			source: "ctx.bar", cells: 8,
 			color: { thresholds: [{ op: "gte", n: 80, color: "red" }, { op: "gte", n: 50, color: "yellow" }], default: "green" },
+			priority: 60,
 		},
 		ctxPct: {
 			source: "ctx.percent", format: "pct", nullText: "?",
 			color: { thresholds: [{ op: "gte", n: 80, color: "red" }, { op: "gte", n: 50, color: "yellow" }], default: "green" },
+			priority: 95,
 		},
-		ctxNums: { source: "ctx.nums", color: "fgDark" },
+		ctxNums: { source: "ctx.nums", color: "fgDark", priority: 40 },
 		ttft: {
 			source: "ttft", glyph: "\uf252", format: "sec1", nullText: "0.0s",
 			color: { thresholds: [{ op: "gte", n: 3000, color: "red" }, { op: "gte", n: 1000, color: "yellow" }], default: "green" },
+			priority: 100,
 		},
-		ttftAvg: { source: "ttft.avg", format: "sec1", prefix: "(avg ", suffix: ")", color: "comment" },
-		tps: { source: "tps", glyph: "\uf0e4", format: "tps1", nullText: "0.0tok/s", color: "cyan" },
-		tpsAvg: { source: "tps.avg", format: "tps1", prefix: "(avg ", suffix: ")", color: "comment" },
-	},
-	separator: { group: "│", item: " ", groupColor: "dark5" },
-	priority: {
-		cwd: 100, branch: 60, title: 30, model: 95, thinking: 40, stier: 35,
-		tokIn: 100, tokOut: 95, cacheR: 50, cacheW: 40, cacheHit: 45, cost: 70,
-		elapsed: 95,
-		ctxLabel: 100, ctxBar: 60, ctxPct: 95, ctxNums: 40,
-		ttft: 100, ttftAvg: 40, tps: 95, tpsAvg: 30,
+		ttftAvg: { source: "ttft.avg", format: "sec1", prefix: "(avg ", suffix: ")", color: "comment", priority: 40 },
+		tps: { source: "tps", glyph: "\uf0e4", format: "tps1", nullText: "0.0tok/s", color: "cyan", priority: 95 },
+		tpsAvg: { source: "tps.avg", format: "tps1", prefix: "(avg ", suffix: ")", color: "comment", priority: 30 },
 	},
 };
 
@@ -240,8 +235,6 @@ function mergeRaw(a: RawConfig, b: RawConfig): RawConfig {
 	return {
 		lines: Array.isArray(b.lines) ? b.lines : a.lines,
 		modules: { ...(a.modules ?? {}), ...(b.modules ?? {}) },
-		separator: { ...(a.separator ?? {}), ...(b.separator ?? {}) },
-		priority: { ...(a.priority ?? {}), ...(b.priority ?? {}) },
 		focus: { ...(a.focus ?? {}), ...(b.focus ?? {}) },
 	};
 }
@@ -268,20 +261,13 @@ function loadConfig(ctx: ExtensionContext): StatuslineConfig {
 	// resolve + light-validate
 	const lines: LineConfig[] = Array.isArray(raw.lines) ? raw.lines : DEFAULT_RAW.lines!;
 	const modules: Record<string, ModuleConfig> = isObj(raw.modules) ? (raw.modules as any) : {};
-	const sepRaw = raw.separator ?? {};
-	const separator = {
-		group: typeof sepRaw.group === "string" ? sepRaw.group : "│",
-		item: typeof sepRaw.item === "string" ? sepRaw.item : " ",
-		groupColor: typeof sepRaw.groupColor === "string" ? sepRaw.groupColor : "dark5",
-	};
-	const priority = isObj(raw.priority) ? (raw.priority as any) : {};
 	const fr = isObj(raw.focus) ? (raw.focus as Partial<FocusConfig>) : {};
 	const focus: FocusConfig = {
 		enabled: fr.enabled === true,
 		dimUnfocused: !!fr.dimUnfocused,
 		unfocusedColor: typeof fr.unfocusedColor === "string" ? fr.unfocusedColor : "comment",
 	};
-	return { lines, modules, separator, priority, focus };
+	return { lines, modules, focus };
 }
 
 // ─── source registry ────────────────────────────────────────────────────────
@@ -418,7 +404,7 @@ function buildItems(names: string[] | undefined, sc: SourceContext, cfg: Statusl
 		const r = mc ? renderModule(mc, sc) : { text: "" };
 		const item: Item = {
 			key: name,
-			pri: cfg.priority[name] ?? 50,
+			pri: mc?.priority ?? 50,
 			group: mc?.group ?? 0,
 			text: r.text,
 		};
@@ -612,7 +598,7 @@ function buildSourceContext(ctx: any, footerData: any): SourceContext {
 
 // ─── render ──────────────────────────────────────────────────────────────────
 let activeConfig: StatuslineConfig = {
-	lines: DEFAULT_RAW.lines!, modules: DEFAULT_RAW.modules!, separator: { group: "│", item: " ", groupColor: "dark5" }, priority: DEFAULT_RAW.priority!,
+	lines: DEFAULT_RAW.lines!, modules: DEFAULT_RAW.modules!,
 	focus: { enabled: false, dimUnfocused: false, unfocusedColor: "comment" },
 };
 
@@ -624,9 +610,9 @@ function renderFooter(ctx: any, footerData: any, width: number): string[] {
 			? palette(cfg.focus.unfocusedColor)
 			: null;
 		try {
-			const groupSp = ` ${c(palette(cfg.separator.groupColor), cfg.separator.group)} `;
 			return cfg.lines.map((line) => {
-				const itemSp = line.sep ?? cfg.separator.item;
+				const groupSp = line.groupSep ?? " │ ";
+				const itemSp = line.sep ?? " ";
 				const leftSp = line.sepLeft ?? itemSp;
 				const rightSp = line.sepRight ?? itemSp;
 				if (line.full) {

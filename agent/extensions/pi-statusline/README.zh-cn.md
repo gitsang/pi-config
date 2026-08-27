@@ -20,4 +20,8 @@ pi 的配置驱动状态栏 / footer。
 
 配置会与内置默认值深度合并。通过 `lines` 和 `modules` 定义布局；模块数据源包括 `session.cwd`、`model`、`thinking`、`usage.*`、`ctx.*`、`task.elapsed`、`task.elapsedTotal`、`ttft`、`tps`、`focus`、`ext-status`、`literal` 等。完整模板见 `config.example.json`。
 
+所有间距与分组都在 `lines` 中配置，没有全局 separator 配置。每行支持 `sep`（同组模块间的分隔符）、`sepLeft` / `sepRight`（左右侧单独覆盖）以及 `groupSep`（组间分隔符，默认 `" │ "`）。
+
+每个模块可携带 `priority` 数字（默认 50）：当行溢出时，priority < 90 的模块按优先级从低到高依次丢弃；`truncate: "end"` 的模块会被省略号截断而不是丢弃。
+
 tmux 用户：如需焦点模块更新，请设置 `set -g focus-events on`。
