@@ -304,6 +304,81 @@ test("loadConfig: parses file and expands env refs", () => {
 		assert.equal(webhook.headers?.Authorization, "Bearer tok123");
 	} finally {
 		process.env.PI_NOTIFY_CONFIG = oldEnv;
+		delete process.env.NOTIFY_TOKEN;
+		invalidateConfigCache();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("loadConfig: env.json (next to config) wins over process env", () => {
+	const dir = mkdtempSync(join(tmpdir(), "pi-notify-"));
+	const oldEnv = process.env.PI_NOTIFY_CONFIG;
+	process.env.NOTIFY_TOKEN = "from-process-env";
+	process.env.PI_NOTIFY_CONFIG = join(dir, "config.json");
+	writeFileSync(
+		process.env.PI_NOTIFY_CONFIG,
+		JSON.stringify({
+			channels: [{ type: "webhook", url: "https://h/t/${NOTIFY_TOKEN}" }],
+		}),
+	);
+	writeFileSync(
+		join(dir, "env.json"),
+		JSON.stringify({ NOTIFY_TOKEN: "from-env-json", EXTRA: 42 }),
+	);
+
+	try {
+		const config = loadConfig();
+		assert.equal(config.channels[0].url, "https://h/t/from-env-json");
+	} finally {
+		process.env.PI_NOTIFY_CONFIG = oldEnv;
+		delete process.env.NOTIFY_TOKEN;
+		invalidateConfigCache();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("loadConfig: missing env.json falls back to process env", () => {
+	const dir = mkdtempSync(join(tmpdir(), "pi-notify-"));
+	const oldEnv = process.env.PI_NOTIFY_CONFIG;
+	process.env.NOTIFY_TOKEN = "from-process-env";
+	process.env.PI_NOTIFY_CONFIG = join(dir, "config.json");
+	writeFileSync(
+		process.env.PI_NOTIFY_CONFIG,
+		JSON.stringify({
+			channels: [{ type: "webhook", url: "https://h/t/${NOTIFY_TOKEN}" }],
+		}),
+	);
+
+	try {
+		const config = loadConfig();
+		assert.equal(config.channels[0].url, "https://h/t/from-process-env");
+	} finally {
+		process.env.PI_NOTIFY_CONFIG = oldEnv;
+		delete process.env.NOTIFY_TOKEN;
+		invalidateConfigCache();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("loadConfig: broken env.json does not break config loading", () => {
+	const dir = mkdtempSync(join(tmpdir(), "pi-notify-"));
+	const oldEnv = process.env.PI_NOTIFY_CONFIG;
+	process.env.NOTIFY_TOKEN = "from-process-env";
+	process.env.PI_NOTIFY_CONFIG = join(dir, "config.json");
+	writeFileSync(
+		process.env.PI_NOTIFY_CONFIG,
+		JSON.stringify({
+			channels: [{ type: "webhook", url: "https://h/t/${NOTIFY_TOKEN}" }],
+		}),
+	);
+	writeFileSync(join(dir, "env.json"), "{not-valid-json");
+
+	try {
+		const config = loadConfig();
+		assert.equal(config.channels[0].url, "https://h/t/from-process-env");
+	} finally {
+		process.env.PI_NOTIFY_CONFIG = oldEnv;
+		delete process.env.NOTIFY_TOKEN;
 		invalidateConfigCache();
 		rmSync(dir, { recursive: true, force: true });
 	}

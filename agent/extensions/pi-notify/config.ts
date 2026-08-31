@@ -6,6 +6,10 @@
  * `/reload`. A missing file is not an error: the extension simply stays quiet.
  *
  * Location: `$PI_NOTIFY_CONFIG`, else `config.json` next to this extension.
+ *
+ * Secrets: `$NAME` / `${NAME}` references in config.json are resolved from
+ * `env.json` (next to the config file, git-ignored) first, then from the
+ * process environment. Keep tokens out of the tracked config.json.
  */
 
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -35,17 +39,60 @@ export function logPath(): string {
 	return join(dirname(configPath()), "notify.log");
 }
 
+/** Path of the git-ignored secret file next to the config. */
+export function envFilePath(): string {
+	return join(dirname(configPath()), "env.json");
+}
+
 /** Whole-value reference: "$TOKEN" */
 const ENV_REF = /^\$([A-Za-z_][A-Za-z0-9_]*)$/;
 /** Embedded reference: "Bearer ${MY_TOKEN}" */
 const ENV_INTERPOLATION = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
+// env.json loader with its own mtime cache.
+let envCache: { key: string; data: Record<string, string> } | undefined;
+
+function loadEnvFile(): Record<string, string> {
+	const path = envFilePath();
+	if (!existsSync(path)) {
+		envCache = undefined;
+		return {};
+	}
+	let key: string;
+	try {
+		const stat = statSync(path);
+		key = `${path}:${stat.mtimeMs}:${stat.size}`;
+	} catch {
+		key = `${path}:unstatable`;
+	}
+	if (envCache && envCache.key === key) return envCache.data;
+	try {
+		const parsed = JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+		const flat: Record<string, string> = {};
+		for (const [name, value] of Object.entries(parsed)) {
+			if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+				flat[name] = String(value);
+			}
+		}
+		envCache = { key, data: flat };
+		return flat;
+	} catch {
+		// A broken env.json must not break notifications — fall back to empty.
+		envCache = { key, data: {} };
+		return {};
+	}
+}
+
+function envValue(name: string): string | undefined {
+	return loadEnvFile()[name] ?? process.env[name];
+}
+
 /** Resolve environment references in string values, recursively. */
 function resolveEnv(value: unknown): unknown {
 	if (typeof value === "string") {
 		const match = ENV_REF.exec(value);
-		if (match) return process.env[match[1]] ?? "";
-		return value.replace(ENV_INTERPOLATION, (_full, name: string) => process.env[name] ?? "");
+		if (match) return envValue(match[1]) ?? "";
+		return value.replace(ENV_INTERPOLATION, (_full, name: string) => envValue(name) ?? "");
 	}
 	if (Array.isArray(value)) return value.map(resolveEnv);
 	if (value && typeof value === "object") {
@@ -187,9 +234,10 @@ export function loadConfig(): NotifyConfig {
 	return config;
 }
 
-/** Drop the mtime cache — used by `/notify` so status output is always fresh. */
+/** Drop the mtime caches — used by `/notify` so status output is always fresh. */
 export function invalidateConfigCache(): void {
 	cache = undefined;
+	envCache = undefined;
 }
 
 /** Sensitive keys — masked in `/notify status` output. */

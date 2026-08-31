@@ -23,6 +23,15 @@ pi install ./pi-notify        # 本地目录安装
 1. `$PI_NOTIFY_CONFIG` 环境变量指向的文件
 2. 扩展目录下的 `config.json`（复制 `config.example.json` 修改）
 
+**敏感值（token/密钥）不要写进 `config.json`**（会被 git 跟踪）。放在同级目录的 `env.json`（已被 gitignore 忽略，复制 `env.example.json` 修改）：
+
+```jsonc
+// ~/.pi/agent/extensions/pi-notify/env.json（git 忽略，勿提交）
+{ "MY_MATTERMOST_WEBHOOK": "your-token" }
+```
+
+`config.json` 中用 `$NAME` / `${NAME}` 引用，解析顺序：`env.json` → 进程环境变量。
+
 ```jsonc
 {
   "enabled": true,
@@ -55,7 +64,6 @@ pi install ./pi-notify        # 本地目录安装
 ```
 
 > `body` 推荐写成 **JSON 对象**：先替换占位符再整体序列化，错误文本里的引号/换行永远不会破坏 JSON。字符串 body 也支持（按 `contentType` 自动转义）。不写 `body` 则发送默认信封（含全部变量）。
-
 ## 模板变量
 
 | 变量 | 含义 |
@@ -85,7 +93,6 @@ URL 中的占位符会做 URL 编码；`headers`/`body` 值里的 `${ENV}` 环�
 ## 通知日志
 
 发送结果（失败/调试信息）追加写入 `notify.log`（与 config.json 同目录），轮转上限 256KB。
-
 ## 扩展架构
 
 ```

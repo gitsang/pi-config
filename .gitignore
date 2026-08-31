@@ -3,6 +3,9 @@ trust.json
 auth.json
 .env
 
+# pi-notify: per-extension secret values referenced from config.json
+agent/extensions/pi-notify/env.json
+
 # ===== OS / editor noise =====
 .DS_Store
 Thumbs.db

@@ -1,0 +1,45 @@
+{
+  "enabled": true,
+  "modes": ["tui"],
+  "timeoutMs": 5000,
+  "dedupeMs": 3000,
+  "minDurationSec": 0,
+  "maxTextChars": 500,
+  "titleTemplate": "pi {{status}} · {{project}}",
+  "template": "{{status}} · {{project}} · {{duration}}",
+  "events": {
+    "task-complete": true
+  },
+  "debug": false,
+  "channels": [
+    {
+      "type": "webhook",
+      "name": "mattermost",
+      "enabled": true,
+      "url": "https://mattermost.cn.c8g.top/hooks/${MATTERMOST_WEBHOOK_TOKEN}",
+      "method": "POST",
+      "contentType": "application/json; charset=utf-8",
+      "body": {
+        "text": "{{status}} · {{project}}",
+        "attachments": [
+          {
+            "color": "#36a64f",
+            "title": "{{status}} · {{project}}",
+            "text": "{{reason}}",
+            "fields": [
+              { "title": "事件", "value": "`{{event}}`", "short": true },
+              { "title": "项目", "value": "{{project}}", "short": true },
+              { "title": "模型", "value": "`{{model}}`", "short": true },
+              { "title": "会话", "value": "{{session}}", "short": true },
+              { "title": "耗时", "value": "{{duration}}", "short": true },
+              { "title": "主机", "value": "`{{host}}`", "short": true },
+              { "title": "日期", "value": "{{date}}", "short": true },
+              { "title": "时间", "value": "{{time}}", "short": true }
+            ],
+            "footer": "pi-notify · {{event}}"
+          }
+        ]
+      }
+    }
+  ]
+}
