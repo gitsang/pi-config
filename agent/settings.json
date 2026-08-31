@@ -1,7 +1,7 @@
 {
   "lastChangelogVersion": "0.84.3",
   "theme": "dark",
-  "defaultProvider": "saigw",
+  "defaultProvider": "yealink",
   "defaultModel": "deepseek-v4-flash",
   "defaultThinkingLevel": "max",
   "hideThinkingBlock": false,
@@ -11,4 +11,3 @@
     "npm:@tintinweb/pi-subagents"
   ]
 }
-
