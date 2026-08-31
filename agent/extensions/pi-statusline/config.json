@@ -1,27 +1,57 @@
 {
   "lines": [
     {
-      "left": ["piState", "autoTitle", "title"],
+      "left": [
+        "piState",
+        "autoTitle",
+        "title"
+      ],
       "sepLeft": " ",
-      "right": ["model", "thinking", "stier"],
+      "right": [
+        "model",
+        "thinking",
+        "stier"
+      ],
       "sepRight": " "
     },
     {
-      "left": ["cwd"],
+      "left": [
+        "cwd"
+      ],
       "sepLeft": " ",
-      "right": ["branch"],
+      "right": [
+        "branch"
+      ],
       "sepRight": " "
     },
     {
-      "left": ["tokIn", "tokOut", "cacheR", "cacheW", "cacheHit", "cost"],
+      "left": [
+        "tokIn",
+        "tokOut",
+        "cacheR",
+        "cacheW",
+        "cacheHit",
+        "cost"
+      ],
       "sepLeft": " ",
-      "right": ["ctxBar", "ctxPct", "ctxNums"],
+      "right": [
+        "ctxBar",
+        "ctxPct",
+        "ctxNums"
+      ],
       "sepRight": " "
     },
     {
-      "left": ["elapsed", "ttftAvg", "tpsAvg"],
+      "left": [
+        "elapsed",
+        "ttftAvg",
+        "tpsAvg"
+      ],
       "sepLeft": " ",
-      "right": ["todayTok", "todayCost"],
+      "right": [
+        "todayTok",
+        "todayCost"
+      ],
       "sepRight": " "
     }
   ],
@@ -64,7 +94,7 @@
     },
     "branch": {
       "source": "footer.branch",
-      "glyph": "\ue725",
+      "glyph": "",
       "color": "green",
       "priority": 60
     },
@@ -81,7 +111,7 @@
     "stier": {
       "source": "ext-status",
       "key": "service-tier",
-      "glyph": "\uf0e7",
+      "glyph": "",
       "color": {
         "map": {
           "priority": "orange",
@@ -95,35 +125,35 @@
     },
     "tokIn": {
       "source": "usage.input",
-      "glyph": "\uf01b",
+      "glyph": "",
       "format": "tok",
       "color": "cyan",
       "priority": 100
     },
     "tokOut": {
       "source": "usage.output",
-      "glyph": "\uf01a",
+      "glyph": "",
       "format": "tok",
       "color": "green1",
       "priority": 95
     },
     "cacheR": {
       "source": "usage.cacheRead",
-      "glyph": "\udb84\ude5b",
+      "glyph": "󱉛",
       "format": "tok",
       "color": "blue5",
       "priority": 50
     },
     "cacheW": {
       "source": "usage.cacheWrite",
-      "glyph": "\udb84\ude59",
+      "glyph": "󱉙",
       "format": "tok",
       "color": "purple",
       "priority": 40
     },
     "cacheHit": {
       "source": "usage.ch",
-      "glyph": "\uf49b",
+      "glyph": "",
       "format": "pct",
       "nullText": "0%",
       "color": "yellow",
@@ -131,14 +161,14 @@
     },
     "cost": {
       "source": "usage.cost",
-      "glyph": "\uef8d",
+      "glyph": "",
       "format": "dollars3",
       "color": "orange",
       "priority": 70
     },
     "elapsed": {
       "source": "task.elapsedTotal",
-      "glyph": "\uf520",
+      "glyph": "",
       "format": "hms",
       "nullText": "0s",
       "color": "green1",
@@ -155,30 +185,52 @@
       "cells": 8,
       "color": {
         "thresholds": [
-          { "op": "gte", "n": 80, "color": "red" },
-          { "op": "gte", "n": 50, "color": "yellow" }
+          {
+            "op": "gte",
+            "n": 80,
+            "color": "red"
+          },
+          {
+            "op": "gte",
+            "n": 50,
+            "color": "yellow"
+          }
         ],
         "default": "green"
       },
-      "priority": 60
+      "priority": 60,
+      "estimateColor": "yellow",
+      "estimateMarker": ""
     },
     "ctxPct": {
       "source": "ctx.percent",
       "format": "pct",
       "nullText": "?",
+      "estimateMarker": "",
       "color": {
         "thresholds": [
-          { "op": "gte", "n": 80, "color": "red" },
-          { "op": "gte", "n": 50, "color": "yellow" }
+          {
+            "op": "gte",
+            "n": 80,
+            "color": "red"
+          },
+          {
+            "op": "gte",
+            "n": 50,
+            "color": "yellow"
+          }
         ],
         "default": "green"
       },
-      "priority": 95
+      "priority": 95,
+      "estimateColor": "yellow"
     },
     "ctxNums": {
       "source": "ctx.nums",
+      "estimateMarker": "≈",
       "color": "fgDark",
-      "priority": 40
+      "priority": 40,
+      "estimateColor": "yellow"
     },
     "ttft": {
       "source": "ttft",
@@ -187,8 +239,16 @@
       "prefix": "ttft ",
       "color": {
         "thresholds": [
-          { "op": "gte", "n": 3000, "color": "red" },
-          { "op": "gte", "n": 1000, "color": "yellow" }
+          {
+            "op": "gte",
+            "n": 3000,
+            "color": "red"
+          },
+          {
+            "op": "gte",
+            "n": 1000,
+            "color": "yellow"
+          }
         ],
         "default": "green"
       },
@@ -196,13 +256,21 @@
     },
     "ttftAvg": {
       "source": "ttft.avg",
-      "glyph": "\uf4e3",
+      "glyph": "",
       "format": "sec1",
       "nullText": "0.0s",
       "color": {
         "thresholds": [
-          { "op": "gte", "n": 30000, "color": "red" },
-          { "op": "gte", "n": 10000, "color": "yellow" }
+          {
+            "op": "gte",
+            "n": 30000,
+            "color": "red"
+          },
+          {
+            "op": "gte",
+            "n": 10000,
+            "color": "yellow"
+          }
         ],
         "default": "green"
       },
@@ -218,7 +286,7 @@
     },
     "tpsAvg": {
       "source": "tps.avg",
-      "glyph": "\udb81\udcc5",
+      "glyph": "󰓅",
       "format": "tps1",
       "nullText": "0.0tok/s",
       "color": "cyan",
@@ -227,7 +295,7 @@
     "todayTok": {
       "source": "ext-status",
       "key": "metrics-today-tokens",
-      "glyph": "\uf073",
+      "glyph": "",
       "format": "tok",
       "nullText": "",
       "color": "cyan",
@@ -236,7 +304,7 @@
     "todayCost": {
       "source": "ext-status",
       "key": "metrics-today-cost",
-      "glyph": "\uef8d",
+      "glyph": "",
       "format": "dollars3",
       "nullText": "",
       "color": "orange",

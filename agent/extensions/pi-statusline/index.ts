@@ -26,7 +26,9 @@
  */
 
 import {
+	buildSessionContext,
 	CONFIG_DIR_NAME,
+	estimateTokens,
 	getAgentDir,
 	type ExtensionAPI,
 	type ExtensionContext,
@@ -130,10 +132,12 @@ interface ModuleConfig {
 	format?: string;     // tok|pct|sec1|hms|tps1|dollars3|int|ctxnums|raw
 	valueMap?: Record<string, string>;  // raw value -> display text/icon
 	color?: ColorSpec;
+	estimateColor?: ColorSpec;  // color used instead of color when the value is an estimate (post-compaction)
 	prefix?: string;
 	suffix?: string;
 	cells?: number;      // ctx.bar
 	nullText?: string;   // shown when value is null/empty ("" => drop)
+	estimateMarker?: string;  // prefix shown when value is an estimate (default "≈", "" disables)
 	group?: number;
 	priority?: number;   // drop priority when the line overflows (lower drops first; <90 can be dropped)
 	truncate?: "start" | "end";  // which side to ellipsis when truncated (default "end")
@@ -277,6 +281,7 @@ interface SourceContext {
 	model: any;
 	usage: { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number; ch: number | null };
 	ctxUsage: any;
+	ctxEstimated: boolean;  // true when ctxUsage was estimated (post-compaction), not from a real response
 	timing: { ttft: number | null; tps: number | null };
 	timingAvg: { ttft: number | null; tps: number | null };
 	task: { elapsed: number | null; elapsedTotal: number };
@@ -355,11 +360,24 @@ function formatValue(format: string | undefined, raw: any, nullText: string | un
 	}
 }
 
+// Sources whose value can be an estimate (vs. exact window / real usage).
+const ESTIMATED_CTX_SOURCES = new Set(["ctx.percent", "ctx.tokens", "ctx.nums", "ctx.bar"]);
+function estimatePrefix(mc: ModuleConfig, sc: SourceContext): string {
+	if (!sc.ctxEstimated || !ESTIMATED_CTX_SOURCES.has(mc.source)) return "";
+	return mc.estimateMarker ?? "≈";
+}
+// When a value is estimated, swap in estimateColor so estimates read differently
+// from real usage even without a text marker.
+function moduleColor(mc: ModuleConfig, sc: SourceContext, raw: any): string {
+	return resolveColor(sc.ctxEstimated && mc.estimateColor ? mc.estimateColor : mc.color, raw);
+}
+
 function renderModule(mc: ModuleConfig, sc: SourceContext): { text: string; parts?: { glyphPart: string; plainBody: string; color: string } } {
 	try {
 		if (mc.source === "ctx.bar") {
 			const pct = sc.ctxUsage?.percent ?? null;
-			return { text: progressBar(pct, mc.cells ?? 8, resolveColor(mc.color, pct)) };
+			const color = moduleColor(mc, sc, pct);
+			return { text: `${c(color, estimatePrefix(mc, sc))}${progressBar(pct, mc.cells ?? 8, color)}` };
 		}
 		if (mc.source === "focus" && mc.glyph) {
 			return { text: c(resolveColor(mc.color, focusState()), mc.glyph) };
@@ -370,8 +388,8 @@ function renderModule(mc: ModuleConfig, sc: SourceContext): { text: string; part
 			: (mc.valueMap?.[String(raw)] ?? raw);
 		const formatted = formatValue(mc.format, displayValue, mc.nullText);
 		if (formatted === "") return { text: "" };
-		const body = `${mc.prefix ?? ""}${formatted}${mc.suffix ?? ""}`;
-		const color = resolveColor(mc.color, raw);
+		const body = `${estimatePrefix(mc, sc)}${mc.prefix ?? ""}${formatted}${mc.suffix ?? ""}`;
+		const color = moduleColor(mc, sc, raw);
 		const glyphPart = mc.glyph ? `${c(color, mc.glyph)} ` : "";
 		const text = glyphPart + (body ? c(color, body) : "");
 		// Expose plain parts so the layout can ellipsis the *front* (keep the tail)
@@ -588,12 +606,31 @@ function computeUsage(ctx: any) {
 
 function buildSourceContext(ctx: any, footerData: any): SourceContext {
 	const usage = computeUsage(ctx);
-	const ctxUsage = ctx.getContextUsage();
+	const coreUsage = ctx.getContextUsage();
+	// After compaction, the core deliberately reports tokens: null ("unknown")
+	// until the next real LLM response, because the last assistant usage is
+	// pre-compaction and can't anchor an estimate. Fall back to a per-message
+	// char/4 estimate (compaction summary + kept tail) so the statusline can
+	// still show a number, flagged as an estimate.
+	let ctxUsage = coreUsage;
+	let ctxEstimated = false;
+	if (coreUsage && coreUsage.tokens == null) {
+		try {
+			const messages = buildSessionContext(ctx.sessionManager.getBranch()).messages;
+			let tokens = 0;
+			for (const m of messages) tokens += estimateTokens(m);
+			const window = coreUsage.contextWindow ?? ctx.model?.contextWindow ?? 0;
+			if (tokens > 0 && window > 0) {
+				ctxUsage = { tokens, contextWindow: window, percent: (tokens / window) * 100 };
+				ctxEstimated = true;
+			}
+		} catch { /* ignore */ }
+	}
 	const ttftAvg = ttftHistory.length ? ttftHistory.reduce((a, b) => a + b, 0) / ttftHistory.length : null;
 	const tpsAvg = tpsMsSum > 0 ? tpsOutSum / (tpsMsSum / 1000) : null;
 	const taskElapsed = taskStartedAt !== null ? Date.now() - taskStartedAt : lastTaskElapsedMs;
 	const taskElapsedTotal = sessionTaskTotalMs + (taskStartedAt !== null ? Date.now() - taskStartedAt : 0);
-	return { ctx, footerData, model: ctx.model, usage, ctxUsage, timing: lastTiming, timingAvg: { ttft: ttftAvg, tps: tpsAvg }, task: { elapsed: taskElapsed, elapsedTotal: taskElapsedTotal } };
+	return { ctx, footerData, model: ctx.model, usage, ctxUsage, ctxEstimated, timing: lastTiming, timingAvg: { ttft: ttftAvg, tps: tpsAvg }, task: { elapsed: taskElapsed, elapsedTotal: taskElapsedTotal } };
 }
 
 // ─── render ──────────────────────────────────────────────────────────────────

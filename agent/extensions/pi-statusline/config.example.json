@@ -1,5 +1,5 @@
 {
-  "_comment": "pi-statusline config. Precedence (later overrides earlier): global ~/.pi/agent/pi-statusline.json < extension ./config.json (this dir) < project <cwd>/.pi/pi-statusline.json (trusted). Partial configs deep-merge over the built-in default. Zero config = default 4-line footer. Sources: session.cwd|session.name, footer.branch, model.id, thinking, usage.input|output|cacheRead|cacheWrite|ch|cost, ctx.percent|tokens|window|nums|bar, ttft|ttft.avg, tps|tps.avg, task.elapsed|task.elapsedTotal, focus, ext-status (key), literal (text). color: 'name' | {map:{val->name},default} | {thresholds:[{op,n,color}],default}. Palette: fg fgDark comment dark5 blue cyan blue5 magenta purple orange yellow green green1 red, or raw 'R;G;B'. format: tok pct sec0 sec1 hms tps1 dollars3 int raw. hms renders milliseconds as elapsed time (5h32m47s / 12m05s / 9s). valueMap maps raw values to display text or icons while color.map still matches the raw value. truncate: 'start'|'end' (default 'end') — which side to ellipsis when a single-item side overflows; 'start' keeps the tail (e.g. cwd -> '…/pi-statusline'). Use /statusline reload after edits. FOCUS: {enabled, dimUnfocused, unfocusedColor} — subscribes to the standalone pi-focus extension on 'pi-focus:change'; pi-focus is the sole DEC 1004 owner. When dimUnfocused, the whole footer is recolored to unfocusedColor on blur so the focused pane stands out. The `focus` source returns 'focused'|'unfocused' for indicator modules (see focusDot). tmux users: add `set -g focus-events on` or pane switches won't report. /statusline focus shows current state and whether a pi-focus event has been seen.",
+  "_comment": "pi-statusline config. Precedence (later overrides earlier): global ~/.pi/agent/pi-statusline.json < extension ./config.json (this dir) < project <cwd>/.pi/pi-statusline.json (trusted). Partial configs deep-merge over the built-in default. Zero config = default 4-line footer. Sources: session.cwd|session.name, footer.branch, model.id, thinking, usage.input|output|cacheRead|cacheWrite|ch|cost, ctx.percent|tokens|window|nums|bar, ttft|ttft.avg, tps|tps.avg, task.elapsed|task.elapsedTotal, focus, ext-status (key), literal (text). color: 'name' | {map:{val->name},default} | {thresholds:[{op,n,color}],default}. Palette: fg fgDark comment dark5 blue cyan blue5 magenta purple orange yellow green green1 red, or raw 'R;G;B'. format: tok pct sec0 sec1 hms tps1 dollars3 int raw. hms renders milliseconds as elapsed time (5h32m47s / 12m05s / 9s). valueMap maps raw values to display text or icons while color.map still matches the raw value. truncate: 'start'|'end' (default 'end') — which side to ellipsis when a single-item side overflows; 'start' keeps the tail (e.g. cwd -> '…/pi-statusline'). estimateMarker (default '≈', '' disables): after /compact the core reports ctx tokens as UNKNOWN until the next real LLM response; pi-statusline instead shows a char/4 estimate of the compacted context (summary + kept tail) and prefixes this marker so you can tell it's an estimate (e.g. ctxNums '≈12k/200k'). estimateColor (any ColorSpec): when the value is an estimate, this color replaces `color` for that module — e.g. ctxBar/ctxPct can skip the marker (estimateMarker: \"\") and signal estimates purely by color. Use /statusline reload after edits. FOCUS: {enabled, dimUnfocused, unfocusedColor} — subscribes to the standalone pi-focus extension on 'pi-focus:change'; pi-focus is the sole DEC 1004 owner. When dimUnfocused, the whole footer is recolored to unfocusedColor on blur so the focused pane stands out. The `focus` source returns 'focused'|'unfocused' for indicator modules (see focusDot). tmux users: add `set -g focus-events on` or pane switches won't report. /statusline focus shows current state and whether a pi-focus event has been seen.",
   "lines": [
     {
       "left": [
@@ -202,12 +202,15 @@
         ],
         "default": "green"
       },
-      "priority": 60
+      "priority": 60,
+      "estimateColor": "yellow",
+      "estimateMarker": ""
     },
     "ctxPct": {
       "source": "ctx.percent",
       "format": "pct",
       "nullText": "?",
+      "estimateMarker": "",
       "color": {
         "thresholds": [
           {
@@ -223,12 +226,15 @@
         ],
         "default": "green"
       },
-      "priority": 95
+      "priority": 95,
+      "estimateColor": "yellow"
     },
     "ctxNums": {
       "source": "ctx.nums",
+      "estimateMarker": "≈",
       "color": "fgDark",
-      "priority": 40
+      "priority": 40,
+      "estimateColor": "yellow"
     },
     "ttft": {
       "source": "ttft",
