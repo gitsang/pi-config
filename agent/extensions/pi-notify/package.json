@@ -1,0 +1,42 @@
+{
+  "name": "pi-notify",
+  "version": "0.1.0",
+  "description": "Pi extension: push notifications when the agent finishes a task, with fully customizable webhook URL/body templates. Architected for more triggers and channels (WeChat, QQ, system notifications, macOS, ...).",
+  "type": "module",
+  "license": "MIT",
+  "author": "sang",
+  "keywords": [
+    "pi",
+    "pi-coding-agent",
+    "pi-package",
+    "pi-extension",
+    "notify",
+    "notification",
+    "webhook"
+  ],
+  "files": [
+    "index.ts",
+    "events",
+    "channels",
+    "config.example.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "enabled": true,
+  "modes": ["tui"],
+  "timeoutMs": 5000,
+  "dedupeMs": 3000,
+  "minDurationSec": 0,
+  "maxTextChars": 500,
+  "titleTemplate": "pi {{status}}",
+  "template": "pi {{status}} · {{reason}}",
+  "events": {
+    "task-complete": true
+  },
+  "debug": false,
+  "channels": [
+    {
+      "type": "webhook",
+      "name": "my-hook",
+      "enabled": true,
+      "url": "https://example.com/hook?project={{project}}",
+      "method": "POST",
+      "headers": {
+        "Authorization": "Bearer ${MY_TOKEN}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "event": "{{event}}",
+        "status": "{{status}}",
+        "reason": "{{reason}}",
+        "text": "{{text}}",
+        "meta": {
+          "project": "{{project}}",
+          "cwd": "{{cwd}}",
+          "model": "{{model}}",
+          "session": "{{session}}",
+          "duration": "{{duration}}",
+          "host": "{{host}}",
+          "time": "{{time}}",
+          "date": "{{date}}"
+        }
+      }
+    }
+  ]
+}
