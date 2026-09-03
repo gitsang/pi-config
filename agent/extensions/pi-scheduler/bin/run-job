@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# pi-scheduler run-job — 单 job 执行器（systemd timer / 手动 / :run 共用）
+# 用法: run-job <job-name>
+# 数据目录默认 ~/.pi/scheduler，可用环境变量 PI_SCHEDULER_DIR 覆盖（测试用）。
+set -uo pipefail          # 不用 -e：错误由脚本自己记录并退出
+
+NAME="${1:?usage: run-job <job-name>}"
+DATA_DIR="${PI_SCHEDULER_DIR:-$HOME/.pi/scheduler}"
+JOBS_DIR="$DATA_DIR/jobs"
+STATE_DIR="$DATA_DIR/state"
+HOOKS_DIR="$DATA_DIR/hooks"
+SESS_DIR="$DATA_DIR/sessions/$NAME"
+JOB_FILE="$JOBS_DIR/$NAME.md"
+LAST_OUT="$STATE_DIR/last-$NAME.out"
+RUNS_LOG="$STATE_DIR/runs.jsonl"
+
+mkdir -p "$STATE_DIR" "$SESS_DIR"
+if [ ! -f "$JOB_FILE" ]; then
+  echo "{\"evt\":\"error\",\"name\":\"$NAME\",\"ts\":$(date +%s),\"err\":\"job-missing\"}" >> "$RUNS_LOG"
+  echo "pi-scheduler: job file missing: $JOB_FILE" >&2
+  exit 1
+fi
+
+# --- 环境：sync 生成的 env 提供真实 node / pi CLI 路径（node 升级后 :sync 刷新）---
+if [ -f "$DATA_DIR/env" ]; then
+  . "$DATA_DIR/env"
+  export PATH="${PI_SCHEDULER_PATH:-$PATH}"   # 仅 systemd/cron 等极简环境才收紧 PATH
+fi
+if [ -n "${PI_NODE:-}" ] && [ -n "${PI_CLI:-}" ]; then
+  PI_CMD=("$PI_NODE" "$PI_CLI")
+else
+  PI_CMD=(pi)   # 兜底：本机 PATH 里有 pi 时（手动调试）
+fi
+
+# --- frontmatter 解析：仅当文件首行是 ---；扁平 key: value（允许双引号包裹）---
+META_LN=0
+if IFS= read -r _first < "$JOB_FILE" && [ "$_first" = "---" ]; then
+  META_LN=$(awk 'NR>1 && /^---[[:space:]]*$/ {print NR; exit}' "$JOB_FILE")
+  META_LN=${META_LN:-0}
+fi
+get_meta() {  # $1=key
+  if [ "$META_LN" -gt 0 ]; then
+    awk -v k="$1" -v L="$META_LN" '
+      NR>1 && NR<L {
+        if (match($0, "^" k "[[:space:]]*:")) {
+          v = substr($0, RSTART + RLENGTH); gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+          gsub(/^"|"$/, "", v)
+          print v; exit
+        }
+      }' "$JOB_FILE"
+  fi
+}
+CWD=$(get_meta cwd)
+MODEL=$(get_meta model)
+TIMEOUT_SEC=$(get_meta timeoutSec)
+ENABLED=$(get_meta enabled)
+CWD="${CWD:-$HOME}"; [ -d "$CWD" ] || CWD="$HOME"
+
+# --- 守卫：disabled / 空 prompt → 记 skip（空 prompt 跑 pi 是静默假成功）---
+record() { echo "{\"evt\":\"$1\",\"name\":\"$NAME\",\"ts\":$(date +%s),\"$2\":\"$3\"}" >> "$RUNS_LOG"; }
+if [ "$ENABLED" = "false" ]; then record skip reason disabled; exit 0; fi
+
+if [ "$META_LN" -gt 0 ]; then
+  BODY=$(sed -n "$((META_LN + 1)),\$p" "$JOB_FILE")
+else
+  BODY=$(cat "$JOB_FILE")
+fi
+if [ -z "$(printf '%s' "$BODY" | tr -d '[:space:]')" ]; then record skip reason empty-prompt; exit 0; fi
+
+# --- 并发锁：同一 job 不允许重叠 ---
+exec 9>"$STATE_DIR/.lock-$NAME"
+if ! flock -n 9; then record skip reason already-running; exit 0; fi
+
+# --- 执行 ---
+RUN_ID="$(date +%s)-$$"
+START=$(date +%s)
+record_with_id() { echo "{\"evt\":\"$1\",\"id\":\"$RUN_ID\",\"name\":\"$NAME\",\"ts\":$(date +%s)$2}" >> "$RUNS_LOG"; }
+record_with_id start ""
+[ -x "$HOOKS_DIR/notify" ] && "$HOOKS_DIR/notify" start "$NAME" "$RUN_ID" >/dev/null 2>&1 || true
+
+cd "$CWD" || { echo "{\"evt\":\"error\",\"name\":\"$NAME\",\"ts\":$(date +%s),\"err\":\"bad-cwd:$CWD\"}" >> "$RUNS_LOG"; exit 1; }
+PI_ARGS=(-p --session-dir "$SESS_DIR")
+[ -n "$MODEL" ] && PI_ARGS+=(--model "$MODEL")
+
+# 三段管道：printf | (timeout) pi | tee —— 退出码取中间那段（PIPESTATUS[1]）
+if [ "${TIMEOUT_SEC:-0}" -gt 0 ] 2>/dev/null; then
+  printf '%s' "$BODY" | timeout "$TIMEOUT_SEC" "${PI_CMD[@]}" "${PI_ARGS[@]}" 2>&1 | tee "$LAST_OUT"
+else
+  printf '%s' "$BODY" | "${PI_CMD[@]}" "${PI_ARGS[@]}" 2>&1 | tee "$LAST_OUT"
+fi
+RC=${PIPESTATUS[1]}
+
+END=$(date +%s)
+SID=$(ls -t "$SESS_DIR" 2>/dev/null | grep '\.jsonl$' | head -1)
+STATUS=ok; [ "$RC" -eq 124 ] && STATUS=timeout; [ "$RC" -ne 0 ] && STATUS=fail
+record_with_id end ",\"dur\":$((END - START)),\"exit\":$RC,\"status\":\"$STATUS\",\"session\":\"$SID\""
+[ -x "$HOOKS_DIR/notify" ] && "$HOOKS_DIR/notify" "$STATUS" "$NAME" "$RUN_ID" >/dev/null 2>&1 || true
+
+# --- GC：每 job 留最近 30 个 session；runs.jsonl 截断 2000 行 ---
+ls -t "$SESS_DIR"/*.jsonl 2>/dev/null | tail -n +31 | xargs -r rm -f
+tail -n 2000 "$RUNS_LOG" > "$RUNS_LOG.tmp" 2>/dev/null && mv "$RUNS_LOG.tmp" "$RUNS_LOG"
+exit "$RC"
