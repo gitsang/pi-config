@@ -9,6 +9,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { spawn, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -136,6 +137,33 @@ function formatLastRun(record: string | null): string {
   } catch {
     return "  last: (parse error)";
   }
+}
+
+/** 删除一个 job：job 文件 + units + sessions + last-out（命令与工具共用）。 */
+function removeJob(name: string): void {
+  fs.rmSync(path.join(JOBS_DIR, `${name}.md`), { force: true });
+  systemctl(["disable", "--now", `${UNIT_PREFIX}${name}.timer`]);
+  systemctl(["stop", `${UNIT_PREFIX}${name}.service`]);
+  fs.rmSync(path.join(UNITS_DIR, `${UNIT_PREFIX}${name}.timer`), { force: true });
+  fs.rmSync(path.join(UNITS_DIR, `${UNIT_PREFIX}${name}.service`), { force: true });
+  fs.rmSync(path.join(STATE_DIR, `last-${name}.out`), { force: true });
+  fs.rmSync(path.join(DATA_DIR, "sessions", name), { recursive: true, force: true });
+  systemctl(["daemon-reload"]);
+}
+
+function jobExists(name: string): boolean {
+  return NAME_RE.test(name) && fs.existsSync(path.join(JOBS_DIR, `${name}.md`));
+}
+
+function jobCardLines(name: string): string[] {
+  const { meta } = readJob(name);
+  const enabled = meta.enabled !== "false";
+  const schedule = meta.schedule?.trim() || "daily";
+  return [
+    `• ${name}  ${enabled ? "" : "(disabled) "}${schedule}`,
+    `  cwd: ${meta.cwd || homedir()}  model: ${meta.model || "default"}  timeout: ${meta.timeoutSec || 0}s`,
+    formatLastRun(lastRunRecord(name)),
+  ];
 }
 
 // ---------------------------------------------------------------- units 生成 / sync
@@ -401,6 +429,216 @@ function showWidget(ui: Ctx["ui"], title: string, content: string[]): void {
   ui.setWidget(WIDGET, lines);
 }
 
+// ---------------------------------------------------------------- tools（agent 可调用）
+
+const SCHEDULE_GUIDE =
+  "OnCalendar（systemd）语法，按你所在 shell 的本地时区填（换算与下次触发预览由工具完成）。" +
+  "示例：daily / hourly / weekly（快捷名）；每天 03:10 → *-*-* 03:10:00；每周日 09:30 → Sun *-*-* 09:30:00；" +
+  "工作日 09:00 → Mon..Fri *-*-* 09:00:00；每 15 分钟 → *:00/15；每小时 → *-*-* *:00:00；每月 1 号 02:00 → *-*-01 02:00:00";
+
+type ToolExecCtx = { hasUI?: boolean; signal?: AbortSignal; ui?: Ctx["ui"] };
+
+function toolText(text: string, details?: unknown) {
+  return { content: [{ type: "text" as const, text }], details };
+}
+
+function registerSchedulerTools(pi: ExtensionAPI): void {
+  pi.registerTool({
+    name: "pi_scheduler_list",
+    label: "Pi Scheduler: List",
+    description: "列出 pi-scheduler 的全部定时 job：名称/触发/启用状态/最近一次运行结果。只读，无副作用。",
+    promptSnippet: "List pi scheduled jobs and their last run status",
+    promptGuidelines: [
+      "Use pi_scheduler_list when the user asks what scheduled pi jobs exist, or whether/when a scheduled job last ran.",
+    ],
+    parameters: Type.Object({}),
+    async execute() {
+      const names = listJobs();
+      if (!names.length) return toolText("pi-scheduler: 还没有任何 job。");
+      const lines = names.flatMap(jobCardLines);
+      return toolText(`pi-scheduler jobs (${names.length}):\n${lines.join("\n")}`, { jobs: names });
+    },
+  });
+
+  pi.registerTool({
+    name: "pi_scheduler_create",
+    label: "Pi Scheduler: Create",
+    description:
+      `创建一个定时 pi job：写 jobs/<name>.md（frontmatter + prompt 正文）并注册 systemd user timer，自动完成 sync。` +
+      `⚠️ 注意成本：每个定时触发都会真实运行一次 pi -p agent（消耗 token），使用前应把这一点告诉用户。` +
+      `必填 name、schedule、prompt。${SCHEDULE_GUIDE}。`,  // 实际语义拼接在下方 promptGuidelines 之外
+    promptSnippet: "Create a scheduled pi job (systemd user timer)",
+    promptGuidelines: [
+      "Use pi_scheduler_create when the user asks to set up a recurring pi task (e.g. \"every morning at 9, review yesterday's PRs\").",
+      "Before creating, tell the user the job will run a real pi agent on schedule and consume tokens.",
+    ],
+    parameters: Type.Object({
+      name: Type.String({ description: "job 名：仅字母/数字/_/-，最长 40（例: daily-report）" }),
+      schedule: Type.String({ description: `触发时间（本地时区）。${SCHEDULE_GUIDE}` }),
+      prompt: Type.String({ description: "任务指令正文（markdown）：每次触发时原样作为 prompt 交给 pi -p。写清楚目标/工作目录/完成标准/失败怎么处理。" }),
+      cwd: Type.Optional(Type.String({ description: "工作目录，默认 $HOME（prompt 里也可用绝对路径 cd 到别的仓库）" })),
+      model: Type.Optional(Type.String({ description: "运行模型，留空=当前默认；省钱可填便宜档（例: claude-haiku-4-5）" })),
+      timeoutSec: Type.Optional(Type.String({ description: "单次运行超时秒数（字符串），留空=0 不限（建议给上限防挂死）" })),
+    }),
+    async execute(
+      _id,
+      params: { name: string; schedule: string; prompt: string; cwd?: string; model?: string; timeoutSec?: string },
+    ) {
+      const { name, schedule, prompt } = params;
+      if (!NAME_RE.test(name)) return toolText(`ERROR: name "${name}" 不合法（仅字母/数字/_/-，≤40）`);
+      if (!prompt?.trim()) return toolText("ERROR: prompt 不能为空");
+      if (fs.existsSync(path.join(JOBS_DIR, `${name}.md`))) return toolText(`ERROR: job "${name}" 已存在，请用 pi_scheduler_update 修改`);
+      const userSchedule = schedule.trim() || "daily";
+      const c = computeStoredSchedule(userSchedule, tzContext());
+      if (c.warn) return toolText(`ERROR: schedule 不可用 — ${c.warn}\n${SCHEDULE_GUIDE}`);
+      writeJob(
+        name,
+        {
+          schedule: userSchedule,
+          cwd: params.cwd?.trim() || homedir(),
+          model: params.model?.trim() ?? "",
+          timeoutSec: params.timeoutSec?.trim() || "0",
+          enabled: "true",
+        },
+        prompt,
+      );
+      const s = syncNow();
+      const next = nextFireLocal(c.stored);
+      const head = `job "${name}" 已创建并启用。\n下次触发：${next}${c.note ? `（${c.note}）` : ""}\n⚠️ 每次触发都会运行一次 pi -p agent，消耗 token。`;
+      return toolText(
+        `${head}\n${s.errors.length ? "sync 错误: " + s.errors.join("; ") : "timers synced"}`,
+        { ok: s.ok, name, stored: c.stored, next },
+      );
+    },
+  });
+
+  pi.registerTool({
+    name: "pi_scheduler_update",
+    label: "Pi Scheduler: Update",
+    description: `修改已有 job：可改 schedule/cwd/model/timeoutSec/enabled，或用新 prompt 整体替换正文。只传要改的字段；enabled 传 \"false\" 可停用（保留 job 文件）。${SCHEDULE_GUIDE}`,
+    promptSnippet: "Update an existing scheduled pi job",
+    promptGuidelines: [
+      "Use pi_scheduler_update to change a job's trigger time, working directory, model, timeout, enabled flag, or full prompt text.",
+    ],
+    parameters: Type.Object({
+      name: Type.String({ description: "要修改的 job 名" }),
+      schedule: Type.Optional(Type.String({ description: `新的触发时间（本地时区）。${SCHEDULE_GUIDE}` })),
+      prompt: Type.Optional(Type.String({ description: "新的 prompt 全文（整体替换正文；不传则不修改）" })),
+      cwd: Type.Optional(Type.String({ description: "新的工作目录" })),
+      model: Type.Optional(Type.String({ description: "新的模型" })),
+      timeoutSec: Type.Optional(Type.String({ description: "新的超时秒数" })),
+      enabled: Type.Optional(Type.String({ description: "\"true\" 启用 / \"false\" 停用" })),
+    }),
+    async execute(
+      _id,
+      params: {
+        name: string;
+        schedule?: string;
+        prompt?: string;
+        cwd?: string;
+        model?: string;
+        timeoutSec?: string;
+        enabled?: string;
+      },
+    ) {
+      if (!jobExists(params.name)) return toolText(`ERROR: job "${params.name}" 不存在，先 pi_scheduler_list 看看`);
+      const { meta, body } = readJob(params.name);
+      let changed = false;
+      const changedFields: string[] = [];
+      if (params.schedule !== undefined) {
+        const userSchedule = params.schedule.trim() || "daily";
+        const c = computeStoredSchedule(userSchedule, tzContext());
+        if (c.warn) return toolText(`ERROR: schedule 不可用 — ${c.warn}\n${SCHEDULE_GUIDE}`);
+        meta.schedule = userSchedule;
+        changed = true;
+        changedFields.push("schedule");
+      }
+      let newBody = body;
+      if (params.prompt !== undefined && params.prompt.trim()) {
+        newBody = params.prompt;
+        changed = true;
+        changedFields.push("prompt");
+      }
+      if (params.cwd !== undefined) { meta.cwd = params.cwd.trim(); changed = true; changedFields.push("cwd"); }
+      if (params.model !== undefined) { meta.model = params.model.trim(); changed = true; changedFields.push("model"); }
+      if (params.timeoutSec !== undefined) { meta.timeoutSec = params.timeoutSec.trim(); changed = true; changedFields.push("timeoutSec"); }
+      if (params.enabled !== undefined) {
+        if (params.enabled !== "true" && params.enabled !== "false") return toolText('ERROR: enabled 只接受 "true" 或 "false"');
+        meta.enabled = params.enabled;
+        changed = true;
+        changedFields.push("enabled");
+      }
+      if (!changed) return toolText("没有提供任何要修改的字段（至少传 schedule/prompt/cwd/model/timeoutSec/enabled 之一）");
+      writeJob(params.name, meta, newBody);
+      const s = syncNow();
+      const rec = lastRunRecord(params.name);
+      return toolText(
+        `job "${params.name}" 已更新字段: ${changedFields.join(", ")}\n${s.errors.length ? "sync 错误: " + s.errors.join("; ") : "timers synced"}${rec ? "\n" + rec : ""}`,
+        { ok: s.ok, name: params.name, changed: changedFields },
+      );
+    },
+  });
+
+  pi.registerTool({
+    name: "pi_scheduler_delete",
+    label: "Pi Scheduler: Delete",
+    description: `删除一个 job（job 文件 + systemd timer + sessions + 日志）。破坏性操作：有交互界面时需用户确认；无界面环境（子代理/headless）会拒绝执行。`,
+    promptSnippet: "Delete a scheduled pi job",
+    promptGuidelines: ["Use pi_scheduler_delete only when the user clearly asks to remove a scheduled job."],
+    parameters: Type.Object({ name: Type.String({ description: "要删除的 job 名" }) }),
+    async execute(_id, params: { name: string }, _signal, _onUpdate, ctx: ToolExecCtx) {
+      if (!jobExists(params.name)) return toolText(`ERROR: job "${params.name}" 不存在`);
+      if (!ctx.hasUI || !ctx.ui) {
+        return toolText(`需要人工确认：当前无交互界面，不能删除 job。请在 pi TUI 里执行 /pi-scheduler:delete ${params.name}`);
+      }
+      const ok = await ctx.ui.confirm("pi-scheduler: 删除 job?", `删除 "${params.name}"？会同时移除 systemd timer、sessions 与日志。`);
+      if (!ok) return toolText("已取消删除");
+      removeJob(params.name);
+      return toolText(`job "${params.name}" 已删除（timer/sessions/日志已清理）`);
+    },
+  });
+
+  pi.registerTool({
+    name: "pi_scheduler_run",
+    label: "Pi Scheduler: Run Now",
+    description: `立即运行一次指定 job（前台等待完成，返回退出码与输出尾部）。⚠️ 会真实运行一次 pi agent（消耗 token）。有交互界面时需用户确认；无界面环境会拒绝。`,
+    promptSnippet: "Run a scheduled pi job once, right now",
+    promptGuidelines: ["Use pi_scheduler_run when the user asks to run a scheduled job immediately (not wait for its timer)."],
+    parameters: Type.Object({ name: Type.String({ description: "要运行的 job 名" }) }),
+    async execute(_id, params: { name: string }, signal, onUpdate, ctx: ToolExecCtx) {
+      if (!jobExists(params.name)) return toolText(`ERROR: job "${params.name}" 不存在`);
+      if (!ctx.hasUI || !ctx.ui) {
+        return toolText(`需要人工确认：当前无交互界面，不能立即运行（会消耗 token）。请在 pi TUI 里执行 /pi-scheduler:run ${params.name}`);
+      }
+      const ok = await ctx.ui.confirm("pi-scheduler: 立即运行?", `立即运行 "${params.name}"？会真实执行一次 pi agent（消耗 token）。`);
+      if (!ok) return toolText("已取消运行");
+      onUpdate?.({ content: [{ type: "text", text: `正在运行 ${params.name}…` }] });
+      const out: string[] = [];
+      const child = spawn("/bin/bash", [RUN_JOB, params.name], { env: { ...process.env, PI_SCHEDULER_DIR: DATA_DIR } });
+      let buf = "";
+      const push = (d: Buffer | string) => {
+        buf += d.toString();
+        const ls = buf.split("\n");
+        buf = ls.pop() ?? "";
+        for (const l of ls) if (l.trim()) { out.push(l); if (out.length > 30) out.shift(); }
+      };
+      child.stdout.on("data", push);
+      child.stderr.on("data", push);
+      if (signal) signal.addEventListener("abort", () => child.kill("SIGTERM"), { once: true });
+      const code: number = await new Promise((res) => {
+        child.on("close", (c) => res(c ?? 1));
+        child.on("error", () => res(1));
+      });
+      const rec = lastRunRecord(params.name);
+      const tail = out.slice(-15).join("\n");
+      return toolText(
+        `run finished exit=${code}${rec ? "\n" + rec : ""}\n--- output tail ---\n${tail || "(no output)"}`,
+        { exit: code, record: rec },
+      );
+    },
+  });
+}
+
 // ---------------------------------------------------------------- commands
 
 export default function (pi: ExtensionAPI): void {
@@ -552,14 +790,7 @@ export default function (pi: ExtensionAPI): void {
         ui.notify("cancelled", "info");
         return;
       }
-      fs.rmSync(path.join(JOBS_DIR, `${name}.md`), { force: true });
-      systemctl(["disable", "--now", `${UNIT_PREFIX}${name}.timer`]);
-      systemctl(["stop", `${UNIT_PREFIX}${name}.service`]);
-      fs.rmSync(path.join(UNITS_DIR, `${UNIT_PREFIX}${name}.timer`), { force: true });
-      fs.rmSync(path.join(UNITS_DIR, `${UNIT_PREFIX}${name}.service`), { force: true });
-      fs.rmSync(path.join(STATE_DIR, `last-${name}.out`), { force: true });
-      fs.rmSync(path.join(DATA_DIR, "sessions", name), { recursive: true, force: true });
-      systemctl(["daemon-reload"]);
+      removeJob(name);
       ui.notify(`job "${name}" deleted`, "info");
     },
   });
@@ -657,4 +888,6 @@ export default function (pi: ExtensionAPI): void {
       ui.notify(`${lines.length} journal line(s)`, "info");
     },
   });
+
+  registerSchedulerTools(pi);
 }
