@@ -31,6 +31,24 @@ const NAME_RE = /^[A-Za-z0-9_-]{1,40}$/;
 
 const WIDGET = "pi-scheduler";
 
+const SCHEDULE_HELP = [
+  "触发时间用 systemd OnCalendar 语法，按你的本地时区填，可留空 = daily",
+  "  快捷名:   daily / hourly / weekly / monthly",
+  "  每天 3:10       *-*-* 03:10:00",
+  "  每周日 9:30     Sun *-*-* 09:30:00",
+  "  工作日 9:00     Mon..Fri *-*-* 09:00:00",
+  "  每 15 分钟      *:00/15",
+  "  每小时          *-*-* *:00:00",
+  "  每月 1 号 2:00  *-*-01 02:00:00",
+  "",
+  "其余字段都可留空：",
+  "  cwd 默认 $HOME（job 内可再用绝对路径 cd 到别的仓库）",
+  "  model 默认 = 你现在用的模型；省钱可填便宜档",
+  "  timeoutSec 默认 0 = 不限时（建议长任务给个上限防挂死）",
+  "",
+  "下一步每一步都有默认值，直接回车即可。",
+];
+
 // ---------------------------------------------------------------- utils
 
 function sh(cmd: string, args: string[]): { code: number; out: string; err: string } {
@@ -399,39 +417,63 @@ export default function (pi: ExtensionAPI): void {
         ui.notify(`job "${name}" already exists — use :update`, "error");
         return;
       }
+      const clearHelp = () => ui.setWidget(WIDGET, []);
+      showWidget(ui, `pi-scheduler:create ${name} — 填法速查`, SCHEDULE_HELP);
 
-      const scheduleRaw = await ui.input("OnCalendar schedule (留空 = daily):", "*-*-* 03:10:00");
-      if (scheduleRaw === undefined) { ui.notify("cancelled", "info"); return; }
+      const scheduleRaw = await ui.input(
+        "触发时间 OnCalendar（本地时区；留空=daily，例: *-*-* 03:10:00 或 Sun *-*-* 09:30:00）:",
+        "daily",
+      );
+      if (scheduleRaw === undefined) { clearHelp(); ui.notify("cancelled", "info"); return; }
       const schedule = scheduleRaw.trim() || "daily";
       const c = computeStoredSchedule(schedule, tzContext());
       if (c.warn) {
-        ui.notify(`invalid/unsupported schedule: ${c.warn}`, "error");
+        clearHelp();
+        ui.notify(`schedule 不可用: ${c.warn}（试试上方示例里的写法）`, "error");
         return;
       }
-      ui.notify(`schedule ok — next fire: ${nextFireLocal(c.stored)}${c.note ? " " + c.note : ""}`, "info");
+      ui.notify(`✓ schedule ok — 下次触发: ${nextFireLocal(c.stored)}${c.note ? ` （${c.note}）` : ""}`, "info");
 
-      const cwdRaw = await ui.input("Working directory (留空 = $HOME):", homedir());
-      if (cwdRaw === undefined) { ui.notify("cancelled", "info"); return; }
-      const modelRaw = await ui.input("Model (留空 = pi 默认):", "");
-      if (modelRaw === undefined) { ui.notify("cancelled", "info"); return; }
-      const timeoutRaw = await ui.input("timeoutSec (0 = 不限):", "0");
-      if (timeoutRaw === undefined) { ui.notify("cancelled", "info"); return; }
+      const cwdRaw = await ui.input("工作目录 cwd（留空=$HOME；例: /home/you/src/repo）:", homedir());
+      if (cwdRaw === undefined) { clearHelp(); ui.notify("cancelled", "info"); return; }
+      const modelRaw = await ui.input("模型 model（留空=当前默认；省钱例: claude-haiku-4-5）:", "");
+      if (modelRaw === undefined) { clearHelp(); ui.notify("cancelled", "info"); return; }
+      const timeoutRaw = await ui.input("超时秒数 timeoutSec（0=不限；防挂死例: 1800）:", "0");
+      if (timeoutRaw === undefined) { clearHelp(); ui.notify("cancelled", "info"); return; }
+
+      const cwd = cwdRaw.trim() || homedir();
+      const model = modelRaw.trim();
+      const timeoutSec = timeoutRaw.trim() || "0";
+      showWidget(ui, `pi-scheduler:create ${name} — 已填信息`, [
+        `  名称:      ${name}`,
+        `  触发:      ${schedule}${c.note ? `  ${c.note}` : ""}`,
+        `  下次触发:  ${nextFireLocal(c.stored)}`,
+        `  工作目录:  ${cwd}`,
+        `  模型:      ${model || "(默认)"}`,
+        `  超时:      ${timeoutSec === "0" ? "不限" : timeoutSec + "s"}`,
+        "",
+        "下一步打开编辑器写 prompt（任务指令）。内容会原样作为 prompt 交给 `pi -p`。",
+      ]);
 
       const body = await ui.editor(
-        `pi-scheduler: prompt for "${name}"`,
-        `# 任务目标\n\n在这个文件里写 agent 要干的事。内容会原样作为 prompt 交给 \`pi -p\`。`,
+        `pi-scheduler: 写 "${name}" 的 prompt（frontmatter 在上面速查里改也可以，直接存）`,
+        `# 任务目标
+
+在这个文件里写 agent 要干的事。内容会原样作为 prompt 交给 \`pi -p\`。
+写清楚：干什么、在哪个目录/仓库、完成标准、失败时怎么办。`,
       );
-      if (!body?.trim()) { ui.notify("empty prompt, cancelled", "info"); return; }
+      if (!body?.trim()) { clearHelp(); ui.notify("empty prompt, cancelled", "info"); return; }
 
       writeJob(name, {
         schedule,
-        cwd: cwdRaw.trim() || homedir(),
-        model: modelRaw.trim(),
-        timeoutSec: timeoutRaw.trim() || "0",
+        cwd,
+        model,
+        timeoutSec,
         enabled: "true",
       }, body);
 
       const s = syncNow();
+      clearHelp();
       ui.notify(`job "${name}" created. ${s.ok ? "timers synced" : "sync had errors"}`, s.ok ? "info" : "warning");
       if (s.errors.length) ui.notify(s.errors.join("; "), "error");
       showWidget(ui, `pi-scheduler: ${name}`, s.lines);
