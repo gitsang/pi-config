@@ -1,8 +1,8 @@
 {
   "lastChangelogVersion": "0.85.1",
   "theme": "dark",
-  "defaultProvider": "yealink",
-  "defaultModel": "deepseek-v4-flash",
+  "defaultProvider": "saigw",
+  "defaultModel": "glm-5.3-flash",
   "defaultThinkingLevel": "max",
   "hideThinkingBlock": false,
   "packages": [
