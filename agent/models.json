@@ -49,6 +49,14 @@
           }
         },
         {
+          "id": "gemini-3.8-flash",
+          "name": "Gemini 3.8 Flash",
+          "contextWindow": 1048576,
+          "maxTokens": 65535,
+          "input": ["text", "image"],
+          "reasoning": true
+        },
+        {
           "id": "deepseek-v4-flash",
           "name": "DeepSeek V4 Flash",
           "contextWindow": 1000000,
