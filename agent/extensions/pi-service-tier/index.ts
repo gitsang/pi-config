@@ -10,9 +10,9 @@
  *   var. So we inject `service_tier` at the payload level, right before the
  *   request is sent, via the `before_provider_request` hook.
  *
- *   Works for any provider whose request body accepts a `service_tier` field
- *   (OpenAI Responses, OpenAI Chat Completions, and compatible gateways). It is
- *   strictly opt-in: only providers/models listed in the config get injection.
+ *   Applies to model IDs starting with `gpt-`, regardless of provider.
+ *   The endpoint must accept a `service_tier` field (OpenAI Responses,
+ *   OpenAI Chat Completions, or a compatible gateway).
  *
  * CONFIG
  *   Global:     <agent-home>/pi-service-tier.json   (e.g. ~/.pi/agent/)
@@ -22,22 +22,11 @@
  *   See config.example.json for a filled-in template.
  *
  *   {
- *     "providers": {
- *       "saigw-openai": {
- *         "default": "priority",                       // sent when no session override
- *         "allowed": ["auto", "default", "flex", "priority"]
- *       }
- *     },
- *     "models": {
- *       "saigw-openai/gpt-5.6-sol": {
- *         "default": "priority",
- *         "allowed": ["priority", "flex"]
- *       }
- *     }
+ *     "default": "priority",
+ *     "allowed": ["auto", "default", "flex", "priority"]
  *   }
  *
- *   - An entry's *presence* marks that provider/model as service-tier-capable.
- *     Model-level entries win over provider-level entries.
+ *   - Both settings apply to all model IDs starting with `gpt-`.
  *   - `default`: string sent when no session override is active. null/omitted =
  *     send nothing by default.
  *   - `allowed`: tiers accepted by `/service-tier <value>`. null/omitted = any
@@ -50,8 +39,7 @@
  *   /service-tier on | reset   clear override, fall back to config default
  *   /service-tier list         list allowed tiers for the current model
  *
- *   Switching is refused when the current model is not configured as
- *   service-tier-capable (i.e. neither its provider nor itself is in the config).
+ *   Switching is refused when the current model ID does not start with `gpt-`.
  *
  * CAVEAT — cost tracking
  *   Because injection happens at the payload level (not via `options.serviceTier`),
@@ -80,24 +68,14 @@ const KNOWN_TIERS = ["auto", "default", "flex", "priority", "scale"] as const;
 /** Reserved subcommand words (cannot be used as tier names). */
 const RESERVED = new Set(["off", "on", "reset", "list", "status"]);
 
-interface TierEntry {
+interface ServiceTierConfig {
 	default?: string | null;
 	allowed?: string[] | null;
 }
 
-interface ServiceTierConfig {
-	providers?: Record<string, TierEntry>;
-	models?: Record<string, TierEntry>;
-}
-
-interface ResolvedEntry {
+interface ResolvedConfig {
 	default: string | null;
 	allowed: string[] | null;
-}
-
-interface ResolvedConfig {
-	providers: Map<string, ResolvedEntry>;
-	models: Map<string, ResolvedEntry>;
 }
 
 interface LoadResult {
@@ -106,8 +84,8 @@ interface LoadResult {
 }
 
 const EMPTY_CONFIG: ResolvedConfig = {
-	providers: new Map(),
-	models: new Map(),
+	default: null,
+	allowed: null,
 };
 
 function isStringArray(v: unknown): v is string[] {
@@ -115,22 +93,14 @@ function isStringArray(v: unknown): v is string[] {
 }
 
 /**
- * Validate + coerce a raw entry into a safe ResolvedEntry, collecting warnings
+ * Validate + coerce config into a safe ResolvedConfig, collecting warnings
  * for malformed shapes instead of trusting unchecked casts. (A string
  * "allowed" would later crash `join()`; a non-string "default" would inject
  * garbage into the request body.)
  */
-function normalizeEntry(
-	raw: unknown,
-	label: string,
-	warnings: string[],
-): ResolvedEntry | null {
-	if (raw == null) return null;
-	if (typeof raw !== "object" || Array.isArray(raw)) {
-		warnings.push(`${label}: entry must be an object, ignored.`);
-		return null;
-	}
+function normalizeConfig(raw: ServiceTierConfig, warnings: string[]): ResolvedConfig {
 	const obj = raw as Record<string, unknown>;
+	const label = "pi-service-tier config";
 
 	let def: string | null = null;
 	const d = obj.default;
@@ -155,54 +125,6 @@ function normalizeEntry(
 	}
 
 	return { default: def, allowed };
-}
-
-function normalizeConfig(raw: ServiceTierConfig, warnings: string[]): ResolvedConfig {
-	const providers = new Map<string, ResolvedEntry>();
-	const models = new Map<string, ResolvedEntry>();
-
-	const pv = raw.providers;
-	if (pv !== undefined) {
-		if (pv && typeof pv === "object" && !Array.isArray(pv)) {
-			for (const [k, v] of Object.entries(pv)) {
-				const e = normalizeEntry(v, `providers["${k}"]`, warnings);
-				if (e) providers.set(k, e);
-			}
-		} else {
-			warnings.push(`"providers" must be an object, ignored.`);
-		}
-	}
-	const mv = raw.models;
-	if (mv !== undefined) {
-		if (mv && typeof mv === "object" && !Array.isArray(mv)) {
-			for (const [k, v] of Object.entries(mv)) {
-				const e = normalizeEntry(v, `models["${k}"]`, warnings);
-				if (e) models.set(k, e);
-			}
-		} else {
-			warnings.push(`"models" must be an object, ignored.`);
-		}
-	}
-	return { providers, models };
-}
-
-function deepMergeConfig(base: ServiceTierConfig, override: ServiceTierConfig): ServiceTierConfig {
-	const mergeEntries = (
-		a: Record<string, TierEntry> | undefined,
-		b: Record<string, TierEntry> | undefined,
-	): Record<string, TierEntry> | undefined => {
-		if (!a) return b;
-		if (!b) return a;
-		const out: Record<string, TierEntry> = { ...a };
-		for (const [k, v] of Object.entries(b)) {
-			out[k] = { ...out[k], ...v };
-		}
-		return out;
-	};
-	return {
-		providers: mergeEntries(base.providers, override.providers),
-		models: mergeEntries(base.models, override.models),
-	};
 }
 
 /**
@@ -250,9 +172,9 @@ function loadConfig(ctx: ExtensionContext): LoadResult {
 	// Extension-dir is a fallback for the "config lives with the extension"
 	// convention. Project (trusted only) overrides global.
 	let raw: ServiceTierConfig = readOne(join(getAgentDir(), "pi-service-tier.json"));
-	raw = deepMergeConfig(raw, readOne(join(EXT_DIR, "config.json")));
+	raw = { ...raw, ...readOne(join(EXT_DIR, "config.json")) };
 	if (ctx.isProjectTrusted()) {
-		raw = deepMergeConfig(raw, readOne(join(ctx.cwd, CONFIG_DIR_NAME, "pi-service-tier.json")));
+		raw = { ...raw, ...readOne(join(ctx.cwd, CONFIG_DIR_NAME, "pi-service-tier.json")) };
 	}
 
 	return { config: normalizeConfig(raw, warnings), warnings };
@@ -263,21 +185,9 @@ function modelKey(provider: string, id: string): string {
 	return `${provider}/${id}`;
 }
 
-/**
- * Resolve the configured entry for a model. Model-level wins over provider-level.
- * Returns null if the model is not service-tier-capable.
- */
-function resolveModelEntry(
-	config: ResolvedConfig,
-	provider: string,
-	id: string,
-): ResolvedEntry | null {
-	const mKey = modelKey(provider, id);
-	const modelEntry = config.models.get(mKey);
-	if (modelEntry) return modelEntry;
-	const providerEntry = config.providers.get(provider);
-	if (providerEntry) return providerEntry;
-	return null;
+/** Apply the shared settings only to model IDs with the literal `gpt-` prefix. */
+function resolveModelEntry(config: ResolvedConfig, id: string): ResolvedConfig | null {
+	return id.startsWith("gpt-") ? config : null;
 }
 
 interface ActiveResolution {
@@ -300,7 +210,7 @@ function resolveActive(
 	provider: string,
 	id: string,
 ): ActiveResolution {
-	const entry = resolveModelEntry(config, provider, id);
+	const entry = resolveModelEntry(config, id);
 	if (!entry) return { tier: undefined, source: "none" };
 	const key = modelKey(provider, id);
 	if (overrides.has(key)) {
@@ -352,7 +262,7 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		const { tier } = resolveActive(state.config, state.overrides, m.provider, m.id);
-		// undefined → not configured / no active tier → clear status
+		// undefined → non-GPT model / no active tier → clear status
 		// null     → explicitly disabled via /service-tier off → "off"
 		// string   → the tier name being injected
 		ctx.ui.setStatus(STATUS_KEY, tier === undefined ? undefined : tier === null ? "off" : tier);
@@ -366,10 +276,10 @@ export default function (pi: ExtensionAPI) {
 		publishStatus(ctx);
 	};
 
-	const currentEntry = (ctx: ExtensionContext): { entry: ResolvedEntry | null; provider: string; id: string } | null => {
+	const currentEntry = (ctx: ExtensionContext): { entry: ResolvedConfig | null; provider: string; id: string } | null => {
 		const m = ctx.model;
 		if (!m) return null;
-		return { entry: resolveModelEntry(state.config, m.provider, m.id), provider: m.provider, id: m.id };
+		return { entry: resolveModelEntry(state.config, m.id), provider: m.provider, id: m.id };
 	};
 
 	// Reset per-session state and (re)load config on every session start.
@@ -425,8 +335,8 @@ export default function (pi: ExtensionAPI) {
 		const lines: string[] = [];
 		lines.push(`model: ${key}`);
 		if (!entry) {
-			lines.push("service-tier: NOT configured for this model.");
-			lines.push("  (add an entry under providers or models in pi-service-tier.json or config.json)");
+			lines.push("service-tier: not applicable to this model.");
+			lines.push('  (only model IDs starting with "gpt-" are supported, regardless of provider)');
 			if (state.warnings.length > 0) {
 				lines.push("", "config warnings:");
 				for (const w of state.warnings) lines.push(`  - ${w}`);
@@ -509,7 +419,7 @@ export default function (pi: ExtensionAPI) {
 				if (!cur?.entry) {
 					notify(
 						ctx,
-						`pi-service-tier: ${modelKey(cur?.provider ?? "?", cur?.id ?? "?")} is not configured as service-tier-capable. Switching is not supported.\n${formatStatus(ctx)}`,
+						`pi-service-tier: switching requires a model ID starting with "gpt-".\n${formatStatus(ctx)}`,
 						"warning",
 					);
 					return;
@@ -536,7 +446,7 @@ export default function (pi: ExtensionAPI) {
 			if (!cur?.entry) {
 				notify(
 					ctx,
-					`pi-service-tier: ${modelKey(cur?.provider ?? "?", cur?.id ?? "?")} is not configured as service-tier-capable. Switching is not supported.\n${formatStatus(ctx)}`,
+					`pi-service-tier: switching requires a model ID starting with "gpt-".\n${formatStatus(ctx)}`,
 					"warning",
 				);
 				return;

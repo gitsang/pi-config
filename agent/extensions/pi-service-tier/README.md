@@ -2,7 +2,7 @@
 
 Configurable OpenAI `service_tier` injection for pi requests.
 
-An entry's presence under `providers` or `models` marks that provider/model as service-tier-capable. Model-level entries override provider-level entries.
+Automatically applies to model IDs starting with `gpt-` (case-sensitive), regardless of provider. Other models are left untouched. The endpoint must accept `service_tier`; the prefix rule does not check server support.
 
 ## Usage
 
@@ -19,4 +19,16 @@ Precedence (later overrides earlier):
 2. `config.json` next to this extension
 3. `<cwd>/.pi/pi-service-tier.json` (trusted projects only)
 
-See `config.example.json`.
+Only two top-level settings are needed; no `providers` or `models` mapping:
+
+```json
+{
+  "default": "priority",
+  "allowed": ["auto", "default", "flex", "priority"]
+}
+```
+
+- `default`: tier sent without a session override. Null or omitted means no default injection.
+- `allowed`: tiers accepted by `/service-tier <tier>`. Null or omitted allows any tier.
+
+Configuration files merge by field in the order above. Session overrides remain scoped to each `provider/modelId`. Run `/reload` after updating the extension code. See `config.example.json`.

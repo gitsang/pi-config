@@ -1,8 +1,4 @@
 {
-  "providers": {
-    "saigw-openai": {
-      "default": "priority",
-      "allowed": ["auto", "default", "flex", "priority"]
-    }
-  }
+  "default": "priority",
+  "allowed": ["auto", "default", "flex", "priority"]
 }

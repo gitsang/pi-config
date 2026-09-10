@@ -2,7 +2,7 @@
 
 为 pi 请求注入可配置的 OpenAI `service_tier`。
 
-在 `providers` 或 `models` 下配置某个条目，即表示该 provider/model 支持 service-tier。model 级配置优先于 provider 级。
+自动对模型 ID 以 `gpt-` 开头的模型生效（区分大小写），与 provider 无关。其他模型的请求保持不变。接口本身需要支持 `service_tier`，前缀判断不会检测服务端是否支持。
 
 ## 使用
 
@@ -19,4 +19,16 @@
 2. 本扩展目录下的 `config.json`
 3. `<cwd>/.pi/pi-service-tier.json`（仅受信任项目）
 
-示例见 `config.example.json`。
+只需两个顶层配置项，无需配置 `providers` 或 `models`：
+
+```json
+{
+  "default": "priority",
+  "allowed": ["auto", "default", "flex", "priority"]
+}
+```
+
+- `default`：没有会话覆盖时发送的 tier。设为 null 或省略表示默认不注入。
+- `allowed`：`/service-tier <tier>` 可设置的值。设为 null 或省略表示不限制。
+
+配置文件按上述顺序逐字段覆盖。会话覆盖值仍按 `provider/modelId` 分别保存。更新扩展代码后运行 `/reload` 生效。示例见 `config.example.json`。
