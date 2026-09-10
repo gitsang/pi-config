@@ -2,7 +2,7 @@
   "lastChangelogVersion": "0.85.1",
   "theme": "dark",
   "defaultProvider": "saigw",
-  "defaultModel": "gpt-6-astra",
+  "defaultModel": "deepseek-flash",
   "defaultThinkingLevel": "max",
   "hideThinkingBlock": false,
   "packages": [

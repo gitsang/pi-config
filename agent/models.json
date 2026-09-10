@@ -57,11 +57,11 @@
           "reasoning": true
         },
         {
-          "id": "deepseek-v4-flash",
-          "name": "DeepSeek V4 Flash",
+          "id": "deepseek-flash",
+          "name": "DeepSeek Flash",
           "contextWindow": 1000000,
           "maxTokens": 384000,
-          "input": ["text"],
+          "input": ["text", "image"],
           "reasoning": true,
           "thinkingLevelMap": {
             "minimal": null,
