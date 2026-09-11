@@ -33,7 +33,8 @@ const NAME_RE = /^[A-Za-z0-9_-]{1,40}$/;
 const WIDGET = "pi-scheduler";
 
 const SCHEDULE_HELP = [
-  "触发时间用 systemd OnCalendar 语法，按你的本地时区填，可留空 = daily",
+  "触发时间用 systemd OnCalendar 语法，可留空 = daily",
+  "  不带时区时按 systemd 的系统时区解释（不做换算）；要指定时区就写在表达式末尾",
   "  快捷名:   daily / hourly / weekly / monthly",
   "  每天 3:10       *-*-* 03:10:00",
   "  每周日 9:30     Sun *-*-* 09:30:00",
@@ -41,6 +42,7 @@ const SCHEDULE_HELP = [
   "  每 15 分钟      *:00/15",
   "  每小时          *-*-* *:00:00",
   "  每月 1 号 2:00  *-*-01 02:00:00",
+  "  显式时区        Fri *-*-* 05:00:00 Asia/Shanghai",
   "",
   "其余字段都可留空：",
   "  cwd 默认 $HOME（job 内可再用绝对路径 cd 到别的仓库）",
@@ -204,77 +206,56 @@ const NOTIFY_TEMPLATE = `#!/usr/bin/env bash
 exit 0
 `;
 
-/** 当前 systemd manager（/etc/localtime，无 TZ env）的时区上下文。 */
-function tzContext(): { deltaMin: number; userZone: string; mgrZone: string } {
-  const parseOffset = (r: { code: number; out: string }) => {
-    const m = /([+-])(\d{2})(\d{2})/.exec(r.out.trim());
-    if (!m) return 0;
-    const min = (+m[2]) * 60 + (+m[3]);
-    return m[1] === "-" ? -min : min;
-  };
-  const user = sh("date", ["+%z"]);
-  const mgr = sh("env", ["-u", "TZ", "date", "+%z"]);
-  const userMin = parseOffset(user);
-  const mgrMin = parseOffset(mgr);
-  return {
-    deltaMin: userMin - mgrMin, // user 比 manager 快多少分钟；user→manager 时间 = user - delta
-    userZone: user.out.trim() || "?",
-    mgrZone: mgr.out.trim() || "?",
-  };
+/** systemd manager 的时区名。不带时区的 OnCalendar 就是按它解释的。 */
+function systemTz(): string {
+  const r = sh("timedatectl", ["show", "--property=Timezone", "--value"]);
+  const v = r.out.trim();
+  return r.code === 0 && v ? v : "UTC";
 }
 
 /**
- * 把用户在本地时区输入的 schedule 换算成 manager 时区（写入 unit 的表达式）。
- * 返回 stored（unit 用）与说明。只处理带具体时间的普通写法；
- * 会跨日/跨星期/含 ~ 的日期形式无法安全换算时给 warn 并原样返回。
+ * 取 OnCalendar 表达式里显式写的时区后缀（如 `… 05:00:00 Asia/Shanghai`），没有则 null。
+ * 仅用于给用户加注解；表达式是否合法一律以 systemd 的校验为准。
  */
-function computeStoredSchedule(
-  userExpr: string,
-  tz: ReturnType<typeof tzContext>,
-): { stored: string; note?: string; warn?: string } {
-  const v = validateSchedule(userExpr);
-  if (!v.ok) return { stored: userExpr, warn: v.reason ?? "invalid schedule" };
-  const norm = v.normalized ?? userExpr;
-  if (tz.deltaMin === 0) return { stored: norm };
-
-  const sp = norm.lastIndexOf(" ");
-  const dateP = sp > 0 ? norm.slice(0, sp) : "";
-  const timeP = sp > 0 ? norm.slice(sp + 1) : norm;
-  const tm = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(timeP);
-  if (!tm) {
-    return { stored: norm, warn: `no concrete time in "${norm}" — cannot convert to systemd timezone (${tz.mgrZone})` };
-  }
-  const total = +tm[1] * 60 + +tm[2] - tz.deltaMin;
-  const roll = Math.floor(total / 1440);
-  const t = ((total % 1440) + 1440) % 1440;
-  // 只有“任意一天”（*-*-* 或带年份的 *-* / 具体月-*）跨日才安全；带星期名 / 固定日 / ~ 不行
-  const dayTok = /^[^-]+-[^-]+-([^-]+)$/.exec(dateP);
-  const hasWeekday = /^[A-Za-z]/.test(dateP);
-  const dayIsWild = dayTok?.[1] === "*" ?? false;
-  const safe = !hasWeekday && (dayIsWild || dateP.includes("-")) && !dateP.includes("~");
-  if (roll !== 0 && !safe) {
-    return {
-      stored: norm,
-      warn: `"${userExpr}" crosses a day boundary when converting to systemd timezone (${tz.mgrZone}) — left unconverted; it will fire in ${tz.mgrZone} wall time`,
-    };
-  }
-  const hh = String(Math.floor(t / 60)).padStart(2, "0");
-  const mm = String(t % 60).padStart(2, "0");
-  const sec = tm[3] ? `:${tm[3]}` : "";
-  return {
-    stored: dateP ? `${dateP} ${hh}:${mm}${sec}` : `${hh}:${mm}${sec}`,
-    note: `(${userExpr} in ${tz.userZone} → ${hh}:${mm} in ${tz.mgrZone})`,
-  };
+function explicitTzOf(expr: string): string | null {
+  const toks = expr.trim().split(/\s+/);
+  if (toks.length < 2) return null;
+  const last = toks[toks.length - 1] ?? "";
+  const prev = toks[toks.length - 2] ?? "";
+  if (!/\d:\d{2}/.test(prev)) return null; // 时区必须紧跟在一个时间后面
+  return /^[A-Za-z][A-Za-z0-9_/+.-]*$/.test(last) ? last : null;
 }
 
-/** 给定写入 unit 的 stored 表达式，返回“下次触发（你的本地时间）”的可读串。 */
-function nextFireLocal(storedExpr: string): string {
+/**
+ * 校验 OnCalendar 表达式，返回写入 unit 的形式。
+ *
+ * **不做任何时区换算**：不带时区的表达式由 systemd 按系统时区（systemd 惯例）解释，
+ * 想指定别的时区请在表达式里显式写后缀，例如 `Fri *-*-* 05:00:00 Asia/Shanghai`。
+ */
+function computeStoredSchedule(userExpr: string): { stored: string; note?: string; warn?: string } {
+  const v = validateSchedule(userExpr);
+  if (!v.ok) return { stored: userExpr, warn: v.reason ?? "invalid schedule" };
+  const stored = v.normalized ?? userExpr;
+  const tz = explicitTzOf(userExpr);
+  return tz
+    ? { stored, note: `时区: ${tz}` }
+    : { stored, note: `按系统时区 ${systemTz()} 解释` };
+}
+
+/**
+ * 给定写入 unit 的表达式，返回带时区标注的“下次触发”。
+ * 主显示用 systemd 的原始输出（系统时区），本机时区不同再补一个明确标注的等价时刻。
+ */
+function nextFire(storedExpr: string): string {
   const r = sh("env", ["-u", "TZ", "systemd-analyze", "calendar", storedExpr]);
   if (r.code !== 0) return "?";
   const m = /Next elapse:\s*(.*)/.exec(r.out);
   if (!m) return "?";
-  const conv = sh("date", ["-d", m[1].trim()]);
-  return conv.code === 0 ? conv.out.trim() : m[1].trim();
+  const syst = m[1].trim();
+  const conv = sh("date", ["-d", syst]);
+  const local = conv.code === 0 ? conv.out.trim() : "";
+  if (!local || local === syst) return syst;
+  return `${syst}（本机 ${local}）`;
 }
 
 /** 从某个真实文件路径向上找到 node_modules/.bin。 */
@@ -344,10 +325,8 @@ function syncNow(): { ok: boolean; lines: string[]; errors: string[] } {
   const envNote = writeEnv();
   if (envNote.note) lines.push(envNote.note);
   installNotifyHook();
-  const tz = tzContext();
-  if (tz.deltaMin !== 0) {
-    lines.push(`systemd timer tz = ${tz.mgrZone}, your tz = ${tz.userZone}; schedules auto-converted`);
-  }
+  const tz = systemTz();
+  lines.push(`schedules without an explicit timezone are interpreted in the system timezone of systemd (${tz})`);
 
   const jobs = listJobs();
   const desired = new Set<string>();
@@ -362,7 +341,7 @@ function syncNow(): { ok: boolean; lines: string[]; errors: string[] } {
       errors.push(`job ${name}: missing schedule in frontmatter (skipped)`);
       continue;
     }
-    const c = computeStoredSchedule(schedule, tz);
+    const c = computeStoredSchedule(schedule);
     if (c.warn) {
       errors.push(`job ${name}: ${c.warn}`);
       continue;
@@ -371,7 +350,7 @@ function syncNow(): { ok: boolean; lines: string[]; errors: string[] } {
     fs.writeFileSync(path.join(UNITS_DIR, `${UNIT_PREFIX}${name}.service`), serviceUnit(name), "utf8");
     fs.writeFileSync(path.join(UNITS_DIR, `${UNIT_PREFIX}${name}.timer`), timerUnit(name, c.stored), "utf8");
     const note = c.note ? ` ${c.note}` : "";
-    lines.push(`job ${name}: ${c.stored}${note} — next ${nextFireLocal(c.stored)}`);
+    lines.push(`job ${name}: ${c.stored}${note} — next ${nextFire(c.stored)}`);
   }
 
   // 清理：不再存在 / 被禁用的 job 的 unit 文件
@@ -432,7 +411,8 @@ function showWidget(ui: Ctx["ui"], title: string, content: string[]): void {
 // ---------------------------------------------------------------- tools（agent 可调用）
 
 const SCHEDULE_GUIDE =
-  "OnCalendar（systemd）语法，按你所在 shell 的本地时区填（换算与下次触发预览由工具完成）。" +
+  "OnCalendar（systemd）语法。不带时区时按 systemd 的系统时区解释（不做任何换算）；" +
+  "要指定时区就显式写在表达式末尾，例如 Fri *-*-* 05:00:00 Asia/Shanghai。" +
   "示例：daily / hourly / weekly（快捷名）；每天 03:10 → *-*-* 03:10:00；每周日 09:30 → Sun *-*-* 09:30:00；" +
   "工作日 09:00 → Mon..Fri *-*-* 09:00:00；每 15 分钟 → *:00/15；每小时 → *-*-* *:00:00；每月 1 号 02:00 → *-*-01 02:00:00";
 
@@ -474,7 +454,7 @@ function registerSchedulerTools(pi: ExtensionAPI): void {
     ],
     parameters: Type.Object({
       name: Type.String({ description: "job 名：仅字母/数字/_/-，最长 40（例: daily-report）" }),
-      schedule: Type.String({ description: `触发时间（本地时区）。${SCHEDULE_GUIDE}` }),
+      schedule: Type.String({ description: `触发时间，OnCalendar（systemd）语法。${SCHEDULE_GUIDE}` }),
       prompt: Type.String({ description: "任务指令正文（markdown）：每次触发时原样作为 prompt 交给 pi -p。写清楚目标/工作目录/完成标准/失败怎么处理。" }),
       cwd: Type.Optional(Type.String({ description: "工作目录，默认 $HOME（prompt 里也可用绝对路径 cd 到别的仓库）" })),
       model: Type.Optional(Type.String({ description: "运行模型，留空=当前默认；省钱可填便宜档（例: claude-haiku-4-5）" })),
@@ -489,7 +469,7 @@ function registerSchedulerTools(pi: ExtensionAPI): void {
       if (!prompt?.trim()) return toolText("ERROR: prompt 不能为空");
       if (fs.existsSync(path.join(JOBS_DIR, `${name}.md`))) return toolText(`ERROR: job "${name}" 已存在，请用 pi_scheduler_update 修改`);
       const userSchedule = schedule.trim() || "daily";
-      const c = computeStoredSchedule(userSchedule, tzContext());
+      const c = computeStoredSchedule(userSchedule);
       if (c.warn) return toolText(`ERROR: schedule 不可用 — ${c.warn}\n${SCHEDULE_GUIDE}`);
       writeJob(
         name,
@@ -503,7 +483,7 @@ function registerSchedulerTools(pi: ExtensionAPI): void {
         prompt,
       );
       const s = syncNow();
-      const next = nextFireLocal(c.stored);
+      const next = nextFire(c.stored);
       const head = `job "${name}" 已创建并启用。\n下次触发：${next}${c.note ? `（${c.note}）` : ""}\n⚠️ 每次触发都会运行一次 pi -p agent，消耗 token。`;
       return toolText(
         `${head}\n${s.errors.length ? "sync 错误: " + s.errors.join("; ") : "timers synced"}`,
@@ -522,7 +502,7 @@ function registerSchedulerTools(pi: ExtensionAPI): void {
     ],
     parameters: Type.Object({
       name: Type.String({ description: "要修改的 job 名" }),
-      schedule: Type.Optional(Type.String({ description: `新的触发时间（本地时区）。${SCHEDULE_GUIDE}` })),
+      schedule: Type.Optional(Type.String({ description: `新的触发时间，OnCalendar（systemd）语法。${SCHEDULE_GUIDE}` })),
       prompt: Type.Optional(Type.String({ description: "新的 prompt 全文（整体替换正文；不传则不修改）" })),
       cwd: Type.Optional(Type.String({ description: "新的工作目录" })),
       model: Type.Optional(Type.String({ description: "新的模型" })),
@@ -547,7 +527,7 @@ function registerSchedulerTools(pi: ExtensionAPI): void {
       const changedFields: string[] = [];
       if (params.schedule !== undefined) {
         const userSchedule = params.schedule.trim() || "daily";
-        const c = computeStoredSchedule(userSchedule, tzContext());
+        const c = computeStoredSchedule(userSchedule);
         if (c.warn) return toolText(`ERROR: schedule 不可用 — ${c.warn}\n${SCHEDULE_GUIDE}`);
         meta.schedule = userSchedule;
         changed = true;
@@ -659,18 +639,18 @@ export default function (pi: ExtensionAPI): void {
       showWidget(ui, `pi-scheduler:create ${name} — 填法速查`, SCHEDULE_HELP);
 
       const scheduleRaw = await ui.input(
-        "触发时间 OnCalendar（本地时区；留空=daily，例: *-*-* 03:10:00 或 Sun *-*-* 09:30:00）:",
+        "触发时间 OnCalendar（留空=daily；不带时区按系统时区解释，例: *-*-* 03:10:00 或 Fri *-*-* 05:00:00 Asia/Shanghai）:",
         "daily",
       );
       if (scheduleRaw === undefined) { clearHelp(); ui.notify("cancelled", "info"); return; }
       const schedule = scheduleRaw.trim() || "daily";
-      const c = computeStoredSchedule(schedule, tzContext());
+      const c = computeStoredSchedule(schedule);
       if (c.warn) {
         clearHelp();
         ui.notify(`schedule 不可用: ${c.warn}（试试上方示例里的写法）`, "error");
         return;
       }
-      ui.notify(`✓ schedule ok — 下次触发: ${nextFireLocal(c.stored)}${c.note ? ` （${c.note}）` : ""}`, "info");
+      ui.notify(`✓ schedule ok — 下次触发: ${nextFire(c.stored)}${c.note ? ` （${c.note}）` : ""}`, "info");
 
       const cwdRaw = await ui.input("工作目录 cwd（留空=$HOME；例: /home/you/src/repo）:", homedir());
       if (cwdRaw === undefined) { clearHelp(); ui.notify("cancelled", "info"); return; }
@@ -685,7 +665,7 @@ export default function (pi: ExtensionAPI): void {
       showWidget(ui, `pi-scheduler:create ${name} — 已填信息`, [
         `  名称:      ${name}`,
         `  触发:      ${schedule}${c.note ? `  ${c.note}` : ""}`,
-        `  下次触发:  ${nextFireLocal(c.stored)}`,
+        `  下次触发:  ${nextFire(c.stored)}`,
         `  工作目录:  ${cwd}`,
         `  模型:      ${model || "(默认)"}`,
         `  超时:      ${timeoutSec === "0" ? "不限" : timeoutSec + "s"}`,
@@ -760,15 +740,15 @@ export default function (pi: ExtensionAPI): void {
       const { meta, body } = parseJobFile(edited);
       if (!body?.trim()) { ui.notify("empty prompt not allowed — job unchanged", "error"); return; }
       const schedule = (meta.schedule ?? "").trim() || "daily";
-      const c = computeStoredSchedule(schedule, tzContext());
+      const c = computeStoredSchedule(schedule);
       if (c.warn) {
         ui.notify(`invalid/unsupported schedule "${schedule}" — job unchanged (${c.warn})`, "error");
         return;
       }
-      meta.schedule = schedule; // job.md 保留用户本地时间的原表达式，unit 由 sync 换算生成
+      meta.schedule = schedule; // job.md 原样保留用户写的表达式，unit 直接照抄（不做时区换算）
       writeJob(name, meta, body);
       const s = syncNow();
-      ui.notify(`job "${name}" updated — next fire: ${nextFireLocal(c.stored)}`, s.ok ? "info" : "warning");
+      ui.notify(`job "${name}" updated — next fire: ${nextFire(c.stored)}`, s.ok ? "info" : "warning");
       if (s.errors.length) ui.notify(s.errors.join("; "), "error");
     },
   });

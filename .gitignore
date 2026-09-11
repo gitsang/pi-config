@@ -19,15 +19,12 @@ Thumbs.db
 bin/
 *.bak.*
 
-# pi-scheduler ships a real executable source script (run-job) under its own bin/
-!agent/extensions/pi-scheduler/bin/
-
 # ===== Runtime history =====
 checkpoints/
 sessions/
+scheduler/
 
 # ===== Agents =====
-orca-*
 .worktrees
 .omx
 .sisyphus
