@@ -168,6 +168,8 @@
     },
     "elapsed": {
       "source": "task.elapsedTotal",
+      "breakdown": true,
+      "breakdownColor": "comment",
       "glyph": "",
       "format": "hms",
       "nullText": "0s",

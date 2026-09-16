@@ -3,8 +3,9 @@
  *
  * Fully config-driven. Zero config = the default 4-line footer (preserved
  * behavior). Data sources are a fixed registry (cwd, model, usage, ctx, ttft,
- * tps, task.elapsed, task.elapsedTotal, thinking, branch, title, ext-status, literal). New read-only
- * sources can be added to the registry; the TTFT/TPS/task-elapsed sources are stateful and built-in.
+ * tps, prefill, decode, task.elapsed, task.elapsedTotal, thinking, branch, title,
+ * ext-status, literal). New read-only sources can be added to the registry; the
+ * TTFT/TPS/prefill/decode/task-elapsed sources are stateful and built-in.
  *
  * CROSS-EXTENSION (no coupling): an external extension "registers" a statusline
  * source by calling ctx.ui.setStatus(key, value). pi-statusline reads it via
@@ -22,7 +23,7 @@
  *
  * Commands:
  *   /statusline          toggle footer on/off (no arg) | "reload" reloads config
- *   /statusline-reset    reset TTFT/TPS/task-elapsed history
+ *   /statusline-reset    reset TTFT/TPS/prefill/decode/task-elapsed history
  */
 
 import {
@@ -135,6 +136,8 @@ interface ModuleConfig {
 	estimateColor?: ColorSpec;  // color used instead of color when the value is an estimate (post-compaction)
 	prefix?: string;
 	suffix?: string;
+	breakdown?: boolean; // task.elapsedTotal: append "(prefill/decode)" totals
+	breakdownColor?: ColorSpec; // color of the breakdown parens (default "comment")
 	cells?: number;      // ctx.bar
 	nullText?: string;   // shown when value is null/empty ("" => drop)
 	estimateMarker?: string;  // prefix shown when value is an estimate (default "≈", "" disables)
@@ -282,7 +285,13 @@ interface SourceContext {
 	usage: { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number; ch: number | null };
 	ctxUsage: any;
 	ctxEstimated: boolean;  // true when ctxUsage was estimated (post-compaction), not from a real response
-	timing: { ttft: number | null; tps: number | null };
+	timing: {
+		ttft: number | null;
+		tps: number | null;
+		prefill: number | null;  // session total prefill (TTFT) ms, null until first measurement
+		decode: number | null;   // session total decode ms, null until first measurement
+		measured: boolean;
+	};
 	timingAvg: { ttft: number | null; tps: number | null };
 	task: { elapsed: number | null; elapsedTotal: number };
 }
@@ -310,6 +319,8 @@ function fetchSource(source: string, sc: SourceContext, mc: ModuleConfig): any {
 		}
 		case "ttft": return sc.timing.ttft;
 		case "ttft.avg": return sc.timingAvg.ttft;
+		case "prefill": return sc.timing.prefill;
+		case "decode": return sc.timing.decode;
 		case "tps": return sc.timing.tps;
 		case "tps.avg": return sc.timingAvg.tps;
 		case "task.elapsed": return sc.task.elapsed;
@@ -388,7 +399,16 @@ function renderModule(mc: ModuleConfig, sc: SourceContext): { text: string; part
 			: (mc.valueMap?.[String(raw)] ?? raw);
 		const formatted = formatValue(mc.format, displayValue, mc.nullText);
 		if (formatted === "") return { text: "" };
-		const body = `${estimatePrefix(mc, sc)}${mc.prefix ?? ""}${formatted}${mc.suffix ?? ""}`;
+		let body = `${estimatePrefix(mc, sc)}${mc.prefix ?? ""}${formatted}${mc.suffix ?? ""}`;
+		// Elapsed total can carry a "(prefill/decode)" breakdown: the two windows
+		// run from request start → first token and first token → message end, so
+		// tool execution time is excluded. Colored separately (default: dim) by
+		// emitting an inner color that resets at the end of the body.
+		if (mc.breakdown && mc.source === "task.elapsedTotal" && sc.timing.measured) {
+			const pre = fmtHms(Math.max(0, sc.timing.prefill ?? 0));
+			const dec = fmtHms(Math.max(0, sc.timing.decode ?? 0));
+			body += c(resolveColor(mc.breakdownColor ?? "comment", raw), `(${pre}/${dec})`);
+		}
 		const color = moduleColor(mc, sc, raw);
 		const glyphPart = mc.glyph ? `${c(color, mc.glyph)} ` : "";
 		const text = glyphPart + (body ? c(color, body) : "");
@@ -571,6 +591,17 @@ let requestStart: number | null = null;
 let msgStart: number | null = null;
 let firstToken: number | null = null;
 let lastTiming: { ttft: number | null; tps: number | null } = { ttft: null, tps: null };
+
+// Session totals for the elapsed breakdown. Prefill = request start → first
+// token (prompt processing + queueing); decode = first token → message end
+// (generation). Tool execution happens between messages, so neither window
+// covers it. Only real measurements are accumulated (see message_end); when a
+// buffering gateway flushes the response in one burst, the first-token → end
+// window is unusable, so decode falls back to (request time - ttft) and the pair
+// still adds up to the measured response time.
+let prefillTotalMs = 0;
+let decodeTotalMs = 0;
+let timingMeasured = false;
 // Aggregate (weighted) TPS: Σ output tokens / Σ generation ms — robust against
 // burst-delivered responses, unlike a mean of per-message rates.
 let tpsOutSum = 0;
@@ -628,9 +659,11 @@ function buildSourceContext(ctx: any, footerData: any): SourceContext {
 	}
 	const ttftAvg = ttftHistory.length ? ttftHistory.reduce((a, b) => a + b, 0) / ttftHistory.length : null;
 	const tpsAvg = tpsMsSum > 0 ? tpsOutSum / (tpsMsSum / 1000) : null;
+	const prefillTotal = timingMeasured ? prefillTotalMs : null;
+	const decodeTotal = timingMeasured ? decodeTotalMs : null;
 	const taskElapsed = taskStartedAt !== null ? Date.now() - taskStartedAt : lastTaskElapsedMs;
 	const taskElapsedTotal = sessionTaskTotalMs + (taskStartedAt !== null ? Date.now() - taskStartedAt : 0);
-	return { ctx, footerData, model: ctx.model, usage, ctxUsage, ctxEstimated, timing: lastTiming, timingAvg: { ttft: ttftAvg, tps: tpsAvg }, task: { elapsed: taskElapsed, elapsedTotal: taskElapsedTotal } };
+	return { ctx, footerData, model: ctx.model, usage, ctxUsage, ctxEstimated, timing: { ...lastTiming, prefill: prefillTotal, decode: decodeTotal, measured: timingMeasured }, timingAvg: { ttft: ttftAvg, tps: tpsAvg }, task: { elapsed: taskElapsed, elapsedTotal: taskElapsedTotal } };
 }
 
 // ─── render ──────────────────────────────────────────────────────────────────
@@ -761,6 +794,16 @@ export default function (pi: ExtensionAPI): void {
 					tpsOutSum += output;
 					tpsMsSum += msCounted;
 				}
+				// Session totals for the elapsed breakdown. When the buffering
+				// fallback kicked in, genMs is not a usable decode window; split the
+				// measured request time into ttft + remainder so the pair still adds up.
+				const requestMs = now - msgStart;
+				const buffered = msCounted !== genMs;
+				const ttftMs = ttft >= 0 ? ttft : 0;
+				const decodeMs = buffered ? Math.max(0, requestMs - ttftMs) : genMs;
+				prefillTotalMs += ttftMs;
+				decodeTotalMs += decodeMs;
+				timingMeasured = true;
 				firstToken = null;
 			}
 		}
@@ -775,6 +818,10 @@ export default function (pi: ExtensionAPI): void {
 		taskStartedAt = null;
 		lastTaskElapsedMs = null;
 		sessionTaskTotalMs = 0;
+		prefillTotalMs = 0;
+		decodeTotalMs = 0;
+		timingMeasured = false;
+		lastTiming = { ttft: null, tps: null };
 		activeConfig = loadConfig(ctx);
 		if (enabled && ctx.mode === "tui") setupFooter(ctx);
 	});
@@ -784,6 +831,9 @@ export default function (pi: ExtensionAPI): void {
 		taskStartedAt = null;
 		lastTaskElapsedMs = null;
 		sessionTaskTotalMs = 0;
+		prefillTotalMs = 0;
+		decodeTotalMs = 0;
+		timingMeasured = false;
 	});
 
 	pi.registerCommand("statusline", {
@@ -818,12 +868,15 @@ export default function (pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("statusline-reset", {
-		description: "Reset TTFT/TPS/task-elapsed history",
+		description: "Reset TTFT/TPS/prefill/decode/task-elapsed history",
 		handler: async (_args, ctx) => {
 			lastTiming = { ttft: null, tps: null };
 			tpsOutSum = 0;
 			tpsMsSum = 0;
 			ttftHistory.length = 0;
+			prefillTotalMs = 0;
+			decodeTotalMs = 0;
+			timingMeasured = false;
 			lastTaskElapsedMs = null;
 			sessionTaskTotalMs = 0;
 			ctx.ui.notify("statusline timing history reset", "info");

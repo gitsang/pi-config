@@ -9,7 +9,7 @@ pi 的配置驱动状态栏 / footer。
 - `/statusline` — 开关 footer。
 - `/statusline reload` — 修改配置后重载。
 - `/statusline focus` — 查看焦点状态与 pi-focus 事件状态。
-- `/statusline-reset` — 清空 TTFT/TPS/任务总耗时历史。
+- `/statusline-reset` — 清空 TTFT/TPS/prefill/decode/任务总耗时历史。
 
 ## 配置
 
@@ -18,7 +18,9 @@ pi 的配置驱动状态栏 / footer。
 2. 本扩展目录下的 `config.json`
 3. `<cwd>/.pi/pi-statusline.json`（仅受信任项目）
 
-配置会与内置默认值深度合并。通过 `lines` 和 `modules` 定义布局；模块数据源包括 `session.cwd`、`model`、`thinking`、`usage.*`、`ctx.*`、`task.elapsed`、`task.elapsedTotal`、`ttft`、`tps`、`focus`、`ext-status`、`literal` 等。完整模板见 `config.example.json`。
+配置会与内置默认值深度合并。通过 `lines` 和 `modules` 定义布局；模块数据源包括 `session.cwd`、`model`、`thinking`、`usage.*`、`ctx.*`、`task.elapsed`、`task.elapsedTotal`、`ttft`、`tps`、`prefill`、`decode`、`focus`、`ext-status`、`literal` 等。完整模板见 `config.example.json`。
+
+在耗时模块上加 `"breakdown": true` 会追加会话累计的 prefill/decode，形如 `100s(25s/33s)`：prefill 为“请求开始 → 首个 token”（prompt 处理），decode 为“首个 token → 消息结束”（生成）。两者都不包含工具执行时间，因此相加等于响应耗时，而不是 `task.elapsedTotal`。`breakdownColor`（默认 `comment`）控制括号颜色。
 
 所有间距与分组都在 `lines` 中配置，没有全局 separator 配置。每行支持 `sep`（同组模块间的分隔符）、`sepLeft` / `sepRight`（左右侧单独覆盖）以及 `groupSep`（组间分隔符，默认 `" │ "`）。
 
