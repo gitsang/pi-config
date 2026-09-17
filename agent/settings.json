@@ -3,11 +3,15 @@
   "theme": "dark",
   "defaultProvider": "saigw",
   "defaultModel": "deepseek-flash",
-  "defaultThinkingLevel": "max",
+  "defaultThinkingLevel": "high",
   "hideThinkingBlock": false,
   "packages": [
     "https://github.com/cathrynlavery/diagram-design",
     "npm:@tintinweb/pi-tasks",
     "npm:@tintinweb/pi-subagents"
-  ]
+  ],
+  "modelThinkingLevels": {
+    "saigw/deepseek-flash": "high"
+  }
 }
+

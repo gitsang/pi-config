@@ -223,6 +223,40 @@
           }
         }
       ]
+    },
+    "yealink": {
+      "baseUrl": "https://yllm.worklink.work/yllm/v1",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "deepseek-flash",
+          "name": "DeepSeek Flash",
+          "contextWindow": 1000000,
+          "maxTokens": 384000,
+          "input": ["text", "image"],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "low": "low",
+            "medium": null,
+            "high": "high",
+            "xhigh": null,
+            "max": "max"
+          },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "requiresReasoningContentOnAssistantMessages": true,
+            "thinkingFormat": "deepseek"
+          },
+          "cost": {
+            "input": 0.14,
+            "output": 0.28,
+            "cacheRead": 0.0028,
+            "cacheWrite": 0
+          }
+        }
+      ]
     }
   }
 }
