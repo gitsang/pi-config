@@ -8,7 +8,8 @@
   "packages": [
     "https://github.com/cathrynlavery/diagram-design",
     "npm:@tintinweb/pi-tasks",
-    "npm:@tintinweb/pi-subagents"
+    "npm:@tintinweb/pi-subagents",
+    "https://github.com/ayghri/i-have-adhd"
   ],
   "modelThinkingLevels": {
     "saigw/deepseek-flash": "high"
