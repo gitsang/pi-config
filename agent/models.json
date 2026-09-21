@@ -259,7 +259,7 @@
       ]
     },
     "home": {
-      "baseUrl": "https://aigw.nas.c8g.top/v1",
+      "baseUrl": "https://aigw.nas.xm1.c8g.top/v1",
       "api": "openai-completions",
       "models": [
         {
