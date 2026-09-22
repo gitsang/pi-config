@@ -331,6 +331,19 @@ function syncNow(): { ok: boolean; lines: string[]; errors: string[] } {
   const tz = systemTz();
   lines.push(`schedules without an explicit timezone are interpreted in the system timezone of systemd (${tz})`);
 
+  // 硬闸门：RUN_JOB 是从本文件位置推导出来的。如果扩展没在自己的真实目录里被加载
+  // （例如被 bundle 到 /tmp 后跑测试），写出来的 unit 会指向一个不存在的路径，
+  // systemd 只会在每次触发时报 203/EXEC，而且直到有人看 journald 才会发现。
+  // 这里宁可拒绝生成，也不写坏 unit。
+  if (!fs.existsSync(RUN_JOB)) {
+    errors.push(
+      `RUN_JOB 不存在: ${RUN_JOB}\n` +
+        `  说明本扩展不是从真实目录加载的（EXT_DIR 推导错了）。拒绝生成 unit，` +
+        `以免写出每次触发都 203/EXEC 的坏单元。请确认扩展位于 ~/.pi/agent/extensions/pi-scheduler/。`,
+    );
+    return { ok: false, lines, errors };
+  }
+
   const jobs = listJobs();
   const desired = new Set<string>();
   for (const name of jobs) {
