@@ -23,6 +23,7 @@ bin/
 checkpoints/
 sessions/
 scheduler/
+trigger/
 
 # ===== Agents =====
 .worktrees

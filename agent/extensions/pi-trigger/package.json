@@ -1,0 +1,44 @@
+{
+  "name": "pi-trigger",
+  "version": "0.1.0",
+  "description": "Pi extension: manage event-driven trigger daemons under ~/.pi/trigger/<name>/ (trigger.yaml manifest), wired to pi-scheduler jobs via bin/emit.",
+  "type": "module",
+  "license": "MIT",
+  "author": "sang",
+  "keywords": [
+    "pi",
+    "pi-coding-agent",
+    "pi-package",
+    "pi-extension",
+    "trigger",
+    "scheduler",
+    "systemd"
+  ],
+  "files": [
+    "index.ts",
+    "manifest.ts",
+    "systemd.ts",
+    "sync.ts",
+    "bin",
+    "README.md"
+  ],
+  "dependencies": {
+    "yaml": "^2.9.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

@@ -1,10 +1,44 @@
 #!/usr/bin/env bash
-# pi-scheduler run-job — 单 job 执行器（systemd timer / 手动 / :run 共用）
-# 用法: run-job <job-name>
+# pi-scheduler run-job — 单 job 执行器（systemd timer / 外部触发 / 手动共用）
+#
+# 用法:
+#   run-job <job-name> [选项]
+#
+# 选项:
+#   --trigger timer|manual|external   触发来源（默认 manual；timer 由 unit 传入）
+#   --source  <text>                  触发者名字（如 runwu-watcher）；只用于记录
+#   --context-json  <json>            事件上下文（JSON 对象），注入 prompt 正文
+#   --context-file  <path>            从文件读事件上下文（stdin 已被 pi 管道占用，不支持 "-"）
+#   --wait                            忙时等待锁（默认：忙则跳过，退出码 75）
+#
 # 数据目录默认 ~/.pi/scheduler，可用环境变量 PI_SCHEDULER_DIR 覆盖（测试用）。
 set -uo pipefail          # 不用 -e：错误由脚本自己记录并退出
 
-NAME="${1:?usage: run-job <job-name>}"
+NAME="${1:?usage: run-job <job-name> [--trigger ...] [--context-json ...]}"
+shift
+
+TRIGGER="manual"
+SOURCE=""
+CTX_JSON=""
+CTX_FILE=""
+WAIT=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --trigger)      TRIGGER="${2:?--trigger 需要值}"; shift 2 ;;
+    --source)       SOURCE="${2:?--source 需要值}"; shift 2 ;;
+    --context-json) CTX_JSON="${2:?--context-json 需要值}"; shift 2 ;;
+    --context-file) CTX_FILE="${2:?--context-file 需要值}"; shift 2 ;;
+    --wait)         WAIT=1; shift ;;
+    *) echo "run-job: 未知参数: $1" >&2; exit 2 ;;
+  esac
+done
+case "$TRIGGER" in timer|manual|external) ;; *) echo "run-job: --trigger 只接受 timer|manual|external" >&2; exit 2 ;; esac
+# job 名合法性：既避免拼出 job 目录之外的路径，也保证它能安全写进 runs.jsonl
+case "$NAME" in
+  *[!A-Za-z0-9_-]*|'') echo "run-job: job 名不合法（仅字母/数字/_/-）: $NAME" >&2; exit 2 ;;
+esac
+[ ${#NAME} -le 40 ] || { echo "run-job: job 名过长（≤40）" >&2; exit 2; }
+
 DATA_DIR="${PI_SCHEDULER_DIR:-$HOME/.pi/scheduler}"
 JOBS_DIR="$DATA_DIR/jobs"
 STATE_DIR="$DATA_DIR/state"
@@ -13,10 +47,29 @@ SESS_DIR="$DATA_DIR/sessions/$NAME"
 JOB_FILE="$JOBS_DIR/$NAME.md"
 LAST_OUT="$STATE_DIR/last-$NAME.out"
 RUNS_LOG="$STATE_DIR/runs.jsonl"
+RENDER="$DATA_DIR/bin/render-prompt.py"
+# 扩展目录可能被移动：优先用与本脚本同目录的 render-prompt.py
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[ -f "$HERE/render-prompt.py" ] && RENDER="$HERE/render-prompt.py"
 
 mkdir -p "$STATE_DIR" "$SESS_DIR"
+
+# JSON 字符串转义（用于把 name / source / context 安全塞进 runs.jsonl）
+jstr() { printf '%s' "$1" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()), end="")'; }
+NAME_J="$(jstr "$NAME")"
+
+# record <evt> <extra-json-fragment> —— 统一带上 trigger/source（有才带）
+record() {
+  local evt="$1" extra="${2:-}"
+  echo "{\"evt\":\"$evt\",\"name\":$NAME_J,\"ts\":$(date +%s),\"trigger\":\"$TRIGGER\"${SOURCE:+,\"source\":$(jstr "$SOURCE")}$extra}" >> "$RUNS_LOG"
+}
+record_id() {  # <evt> <extra-json-fragment>  —— 带 run id
+  local evt="$1" extra="${2:-}"
+  echo "{\"evt\":\"$evt\",\"id\":\"$RUN_ID\",\"name\":$NAME_J,\"ts\":$(date +%s),\"trigger\":\"$TRIGGER\"${SOURCE:+,\"source\":$(jstr "$SOURCE")}$extra}" >> "$RUNS_LOG"
+}
+
 if [ ! -f "$JOB_FILE" ]; then
-  echo "{\"evt\":\"error\",\"name\":\"$NAME\",\"ts\":$(date +%s),\"err\":\"job-missing\"}" >> "$RUNS_LOG"
+  record error ",\"err\":\"job-missing\""
   echo "pi-scheduler: job file missing: $JOB_FILE" >&2
   exit 1
 fi
@@ -57,28 +110,51 @@ ENABLED=$(get_meta enabled)
 CWD="${CWD:-$HOME}"; [ -d "$CWD" ] || CWD="$HOME"
 
 # --- 守卫：disabled / 空 prompt → 记 skip（空 prompt 跑 pi 是静默假成功）---
-record() { echo "{\"evt\":\"$1\",\"name\":\"$NAME\",\"ts\":$(date +%s),\"$2\":\"$3\"}" >> "$RUNS_LOG"; }
-if [ "$ENABLED" = "false" ]; then record skip reason disabled; exit 0; fi
+if [ "$ENABLED" = "false" ]; then record skip ",\"reason\":\"disabled\""; exit 0; fi
 
 if [ "$META_LN" -gt 0 ]; then
   BODY=$(sed -n "$((META_LN + 1)),\$p" "$JOB_FILE")
 else
   BODY=$(cat "$JOB_FILE")
 fi
-if [ -z "$(printf '%s' "$BODY" | tr -d '[:space:]')" ]; then record skip reason empty-prompt; exit 0; fi
+if [ -z "$(printf '%s' "$BODY" | tr -d '[:space:]')" ]; then record skip ",\"reason\":\"empty-prompt\""; exit 0; fi
+
+# --- 渲染上下文（可选）---
+CTX_KEYS=""
+if [ -n "$CTX_FILE" ] || [ -n "$CTX_JSON" ]; then
+  TMP_CTX="$(mktemp)"; TMP_BODY="$(mktemp)"; TMP_OUT="$(mktemp)"
+  trap 'rm -f "$TMP_CTX" "$TMP_BODY" "$TMP_OUT"' EXIT
+  if [ -n "$CTX_FILE" ]; then cp "$CTX_FILE" "$TMP_CTX"; else printf '%s' "$CTX_JSON" > "$TMP_CTX"; fi
+  printf '%s' "$BODY" > "$TMP_BODY"
+  if ! python3 "$RENDER" "$TMP_BODY" "$TMP_CTX" "$TMP_OUT"; then
+    record error ",\"err\":\"context-invalid\""
+    echo "pi-scheduler: 上下文渲染失败（见上）" >&2
+    exit 2
+  fi
+  BODY="$(cat "$TMP_OUT")"
+  CTX_KEYS="$(python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));print(",".join(map(str,d)))' "$TMP_CTX" 2>/dev/null || true)"
+fi
 
 # --- 并发锁：同一 job 不允许重叠 ---
+# 忙时默认跳过（外部触发的正确语义：事件已被别人处理/正在处理）；--wait 时才阻塞排队。
 exec 9>"$STATE_DIR/.lock-$NAME"
-if ! flock -n 9; then record skip reason already-running; exit 0; fi
+if [ "$WAIT" = "1" ]; then
+  flock 9
+else
+  if ! flock -n 9; then
+    record skip ",\"reason\":\"already-running\""
+    echo "pi-scheduler: $NAME 正在运行，跳过本次（$TRIGGER${SOURCE:+ / $SOURCE}）" >&2
+    exit 75   # EX_TEMPFAIL：调用方可自行决定重试
+  fi
+fi
 
 # --- 执行 ---
 RUN_ID="$(date +%s)-$$"
 START=$(date +%s)
-record_with_id() { echo "{\"evt\":\"$1\",\"id\":\"$RUN_ID\",\"name\":\"$NAME\",\"ts\":$(date +%s)$2}" >> "$RUNS_LOG"; }
-record_with_id start ""
+record_id start "${CTX_KEYS:+,\"context_keys\":$(jstr "$CTX_KEYS")}"
 [ -x "$HOOKS_DIR/notify" ] && "$HOOKS_DIR/notify" start "$NAME" "$RUN_ID" >/dev/null 2>&1 || true
 
-cd "$CWD" || { echo "{\"evt\":\"error\",\"name\":\"$NAME\",\"ts\":$(date +%s),\"err\":\"bad-cwd:$CWD\"}" >> "$RUNS_LOG"; exit 1; }
+cd "$CWD" || { record error ",\"err\":\"bad-cwd:$CWD\""; exit 1; }
 PI_ARGS=(-p --session-dir "$SESS_DIR")
 [ -n "$MODEL" ] && PI_ARGS+=(--model "$MODEL")
 
@@ -93,7 +169,7 @@ RC=${PIPESTATUS[1]}
 END=$(date +%s)
 SID=$(ls -t "$SESS_DIR" 2>/dev/null | grep '\.jsonl$' | head -1)
 STATUS=ok; [ "$RC" -eq 124 ] && STATUS=timeout; [ "$RC" -ne 0 ] && STATUS=fail
-record_with_id end ",\"dur\":$((END - START)),\"exit\":$RC,\"status\":\"$STATUS\",\"session\":\"$SID\""
+record_id end ",\"dur\":$((END - START)),\"exit\":$RC,\"status\":\"$STATUS\",\"session\":\"$SID\""
 [ -x "$HOOKS_DIR/notify" ] && "$HOOKS_DIR/notify" "$STATUS" "$NAME" "$RUN_ID" >/dev/null 2>&1 || true
 
 # --- GC：每 job 留最近 30 个 session；runs.jsonl 截断 2000 行 ---

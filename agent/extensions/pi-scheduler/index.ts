@@ -33,7 +33,7 @@ const NAME_RE = /^[A-Za-z0-9_-]{1,40}$/;
 const WIDGET = "pi-scheduler";
 
 const SCHEDULE_HELP = [
-  "触发时间用 systemd OnCalendar 语法，可留空 = daily",
+  "触发时间用 systemd OnCalendar 语法，留空 = 不装 timer（只能被外部触发）",
   "  不带时区时按 systemd 的系统时区解释（不做换算）；要指定时区就写在表达式末尾",
   "  快捷名:   daily / hourly / weekly / monthly",
   "  每天 3:10       *-*-* 03:10:00",
@@ -160,7 +160,7 @@ function jobExists(name: string): boolean {
 function jobCardLines(name: string): string[] {
   const { meta } = readJob(name);
   const enabled = meta.enabled !== "false";
-  const schedule = meta.schedule?.trim() || "daily";
+  const schedule = meta.schedule?.trim() || "(no timer — external/manual only)";
   return [
     `• ${name}  ${enabled ? "" : "(disabled) "}${schedule}`,
     `  cwd: ${meta.cwd || homedir()}  model: ${meta.model || "default"}  timeout: ${meta.timeoutSec || 0}s`,
@@ -177,7 +177,7 @@ function serviceUnit(name: string): string {
     "",
     "[Service]",
     "Type=simple",
-    `ExecStart=${RUN_JOB} ${name}`,
+    `ExecStart=${RUN_JOB} ${name} --trigger timer`,
     `Environment=PI_SCHEDULER_DIR=${DATA_DIR}`,
     "",
   ].join("\n");
@@ -233,6 +233,8 @@ function explicitTzOf(expr: string): string | null {
  * 想指定别的时区请在表达式里显式写后缀，例如 `Fri *-*-* 05:00:00 Asia/Shanghai`。
  */
 function computeStoredSchedule(userExpr: string): { stored: string; note?: string; warn?: string } {
+  // 空 schedule = 明确表示「不装 timer」：job 仍然有效，只由外部（pi-trigger / 手动）触发。
+  if (!userExpr.trim()) return { stored: "" };
   const v = validateSchedule(userExpr);
   if (!v.ok) return { stored: userExpr, warn: v.reason ?? "invalid schedule" };
   const stored = v.normalized ?? userExpr;
@@ -247,6 +249,7 @@ function computeStoredSchedule(userExpr: string): { stored: string; note?: strin
  * 主显示用 systemd 的原始输出（系统时区），本机时区不同再补一个明确标注的等价时刻。
  */
 function nextFire(storedExpr: string): string {
+  if (!storedExpr.trim()) return "(无 timer)";
   const r = sh("env", ["-u", "TZ", "systemd-analyze", "calendar", storedExpr]);
   if (r.code !== 0) return "?";
   const m = /Next elapse:\s*(.*)/.exec(r.out);
@@ -338,7 +341,8 @@ function syncNow(): { ok: boolean; lines: string[]; errors: string[] } {
     }
     const schedule = meta.schedule?.trim();
     if (!schedule) {
-      errors.push(`job ${name}: missing schedule in frontmatter (skipped)`);
+      // 不装 timer。desired 不含它 → 下面的 stale 清理会顺手删掉遗留 unit。
+      lines.push(`job ${name}: no schedule — timer not managed (可被 bin/run-job 外部触发)`);
       continue;
     }
     const c = computeStoredSchedule(schedule);
@@ -444,7 +448,7 @@ function registerSchedulerTools(pi: ExtensionAPI): void {
     name: "pi_scheduler_create",
     label: "Pi Scheduler: Create",
     description:
-      `创建一个定时 pi job：写 jobs/<name>.md（frontmatter + prompt 正文）并注册 systemd user timer，自动完成 sync。` +
+      `创建一个 pi job：写 jobs/<name>.md（frontmatter + prompt 正文）。schedule 非空 → 注册 systemd user timer；留空 → 不装 timer（job 仍有效，可由 bin/run-job / pi-trigger 外部触发）。自动完成 sync。` +
       `⚠️ 注意成本：每个定时触发都会真实运行一次 pi -p agent（消耗 token），使用前应把这一点告诉用户。` +
       `必填 name、schedule、prompt。${SCHEDULE_GUIDE}。`,  // 实际语义拼接在下方 promptGuidelines 之外
     promptSnippet: "Create a scheduled pi job (systemd user timer)",
@@ -454,7 +458,7 @@ function registerSchedulerTools(pi: ExtensionAPI): void {
     ],
     parameters: Type.Object({
       name: Type.String({ description: "job 名：仅字母/数字/_/-，最长 40（例: daily-report）" }),
-      schedule: Type.String({ description: `触发时间，OnCalendar（systemd）语法。${SCHEDULE_GUIDE}` }),
+      schedule: Type.String({ description: `触发时间，OnCalendar（systemd）语法；留空 = 不装 timer（job 仍有效，可被外部触发）。${SCHEDULE_GUIDE}` }),
       prompt: Type.String({ description: "任务指令正文（markdown）：每次触发时原样作为 prompt 交给 pi -p。写清楚目标/工作目录/完成标准/失败怎么处理。" }),
       cwd: Type.Optional(Type.String({ description: "工作目录，默认 $HOME（prompt 里也可用绝对路径 cd 到别的仓库）" })),
       model: Type.Optional(Type.String({ description: "运行模型，留空=当前默认；省钱可填便宜档（例: claude-haiku-4-5）" })),
@@ -468,7 +472,7 @@ function registerSchedulerTools(pi: ExtensionAPI): void {
       if (!NAME_RE.test(name)) return toolText(`ERROR: name "${name}" 不合法（仅字母/数字/_/-，≤40）`);
       if (!prompt?.trim()) return toolText("ERROR: prompt 不能为空");
       if (fs.existsSync(path.join(JOBS_DIR, `${name}.md`))) return toolText(`ERROR: job "${name}" 已存在，请用 pi_scheduler_update 修改`);
-      const userSchedule = schedule.trim() || "daily";
+      const userSchedule = schedule.trim();
       const c = computeStoredSchedule(userSchedule);
       if (c.warn) return toolText(`ERROR: schedule 不可用 — ${c.warn}\n${SCHEDULE_GUIDE}`);
       writeJob(
@@ -484,7 +488,9 @@ function registerSchedulerTools(pi: ExtensionAPI): void {
       );
       const s = syncNow();
       const next = nextFire(c.stored);
-      const head = `job "${name}" 已创建并启用。\n下次触发：${next}${c.note ? `（${c.note}）` : ""}\n⚠️ 每次触发都会运行一次 pi -p agent，消耗 token。`;
+      const head = userSchedule
+        ? `job "${name}" 已创建并启用，timer 已注册。\n下次触发：${next}${c.note ? `（${c.note}）` : ""}\n⚠️ 每次触发都会运行一次 pi -p agent，消耗 token。`
+        : `job "${name}" 已创建。schedule 为空 → 未注册 timer，只能由外部（bin/run-job / pi-trigger）或手动触发。\n⚠️ 每次触发都会运行一次 pi -p agent，消耗 token。`;
       return toolText(
         `${head}\n${s.errors.length ? "sync 错误: " + s.errors.join("; ") : "timers synced"}`,
         { ok: s.ok, name, stored: c.stored, next },
@@ -495,7 +501,7 @@ function registerSchedulerTools(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "pi_scheduler_update",
     label: "Pi Scheduler: Update",
-    description: `修改已有 job：可改 schedule/cwd/model/timeoutSec/enabled，或用新 prompt 整体替换正文。只传要改的字段；enabled 传 \"false\" 可停用（保留 job 文件）。${SCHEDULE_GUIDE}`,
+    description: `修改已有 job：可改 schedule/cwd/model/timeoutSec/enabled，或用新 prompt 整体替换正文。只传要改的字段；enabled 传 \"false\" 可停用（保留 job 文件）；schedule 传空串可移除 timer（job 保留）。${SCHEDULE_GUIDE}`,
     promptSnippet: "Update an existing scheduled pi job",
     promptGuidelines: [
       "Use pi_scheduler_update to change a job's trigger time, working directory, model, timeout, enabled flag, or full prompt text.",
@@ -526,7 +532,7 @@ function registerSchedulerTools(pi: ExtensionAPI): void {
       let changed = false;
       const changedFields: string[] = [];
       if (params.schedule !== undefined) {
-        const userSchedule = params.schedule.trim() || "daily";
+        const userSchedule = params.schedule.trim();
         const c = computeStoredSchedule(userSchedule);
         if (c.warn) return toolText(`ERROR: schedule 不可用 — ${c.warn}\n${SCHEDULE_GUIDE}`);
         meta.schedule = userSchedule;
@@ -639,18 +645,19 @@ export default function (pi: ExtensionAPI): void {
       showWidget(ui, `pi-scheduler:create ${name} — 填法速查`, SCHEDULE_HELP);
 
       const scheduleRaw = await ui.input(
-        "触发时间 OnCalendar（留空=daily；不带时区按系统时区解释，例: *-*-* 03:10:00 或 Fri *-*-* 05:00:00 Asia/Shanghai）:",
-        "daily",
+        "触发时间 OnCalendar（留空=不装 timer，只由外部/手动触发；例: *-*-* 03:10:00）:",
+        "",
       );
       if (scheduleRaw === undefined) { clearHelp(); ui.notify("cancelled", "info"); return; }
-      const schedule = scheduleRaw.trim() || "daily";
+      const schedule = scheduleRaw.trim();
       const c = computeStoredSchedule(schedule);
       if (c.warn) {
         clearHelp();
         ui.notify(`schedule 不可用: ${c.warn}（试试上方示例里的写法）`, "error");
         return;
       }
-      ui.notify(`✓ schedule ok — 下次触发: ${nextFire(c.stored)}${c.note ? ` （${c.note}）` : ""}`, "info");
+      if (!schedule) ui.notify("schedule 留空 → 不注册 timer（可由外部/手动触发）", "info");
+      else ui.notify(`✓ schedule ok — 下次触发: ${nextFire(c.stored)}${c.note ? ` （${c.note}）` : ""}`, "info");
 
       const cwdRaw = await ui.input("工作目录 cwd（留空=$HOME；例: /home/you/src/repo）:", homedir());
       if (cwdRaw === undefined) { clearHelp(); ui.notify("cancelled", "info"); return; }
@@ -664,7 +671,7 @@ export default function (pi: ExtensionAPI): void {
       const timeoutSec = timeoutRaw.trim() || "0";
       showWidget(ui, `pi-scheduler:create ${name} — 已填信息`, [
         `  名称:      ${name}`,
-        `  触发:      ${schedule}${c.note ? `  ${c.note}` : ""}`,
+        `  触发:      ${schedule || "(无 timer，只由外部/手动触发)"}${c.note ? `  ${c.note}` : ""}`,
         `  下次触发:  ${nextFire(c.stored)}`,
         `  工作目录:  ${cwd}`,
         `  模型:      ${model || "(默认)"}`,
@@ -711,7 +718,7 @@ export default function (pi: ExtensionAPI): void {
       for (const name of names) {
         const { meta } = readJob(name);
         const enabled = meta.enabled !== "false";
-        const schedule = meta.schedule?.trim() || "daily";
+        const schedule = meta.schedule?.trim() || "(no timer — external/manual only)";
         out.push(`• ${name}  ${enabled ? "" : "(disabled) "}${schedule}`);
         out.push(`  cwd: ${meta.cwd || homedir()}  model: ${meta.model || "default"}  timeout: ${meta.timeoutSec || 0}s`);
         out.push(formatLastRun(lastRunRecord(name)));
@@ -739,7 +746,8 @@ export default function (pi: ExtensionAPI): void {
       if (edited === undefined) { ui.notify("cancelled", "info"); return; }
       const { meta, body } = parseJobFile(edited);
       if (!body?.trim()) { ui.notify("empty prompt not allowed — job unchanged", "error"); return; }
-      const schedule = (meta.schedule ?? "").trim() || "daily";
+      // 空 schedule 合法：表示不装 timer（只由外部/手动触发）。
+      const schedule = (meta.schedule ?? "").trim();
       const c = computeStoredSchedule(schedule);
       if (c.warn) {
         ui.notify(`invalid/unsupported schedule "${schedule}" — job unchanged (${c.warn})`, "error");
