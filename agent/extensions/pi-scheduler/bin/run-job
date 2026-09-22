@@ -48,9 +48,12 @@ JOB_FILE="$JOBS_DIR/$NAME.md"
 LAST_OUT="$STATE_DIR/last-$NAME.out"
 RUNS_LOG="$STATE_DIR/runs.jsonl"
 RENDER="$DATA_DIR/bin/render-prompt.py"
+# 事件流渲染器：把 pi 的 json 事件实时转成人可读日志（解决 text 模式全程无输出）
+RENDER_EV="$DATA_DIR/bin/render-events.py"
 # 扩展目录可能被移动：优先用与本脚本同目录的 render-prompt.py
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ -f "$HERE/render-prompt.py" ] && RENDER="$HERE/render-prompt.py"
+[ -f "$HERE/render-events.py" ] && RENDER_EV="$HERE/render-events.py"
 
 mkdir -p "$STATE_DIR" "$SESS_DIR"
 
@@ -158,17 +161,37 @@ cd "$CWD" || { record error ",\"err\":\"bad-cwd:$CWD\""; exit 1; }
 PI_ARGS=(-p --session-dir "$SESS_DIR")
 [ -n "$MODEL" ] && PI_ARGS+=(--model "$MODEL")
 
-# 三段管道：printf | (timeout) pi | tee —— 退出码取中间那段（PIPESTATUS[1]）
+# 三段/四段管道：printf | (timeout) pi | render | tee
+# 退出码始终取 pi 那段（PIPESTATUS[1]），渲染器坏掉也不影响 job 成败判定。
+#
+# 为什么用 --mode json：默认的 text 模式会把整段输出缓冲到进程退出才写，
+# 于是持续 15~20 分钟的 job 在 journalctl -f / tail -f 里全程空白。
+# json 模式逐事件输出，交给 render-events.py 转回人话（每行 flush）。
+PI_ARGS+=(--mode json)
+
+run_pipeline() {
+  # $@ = pi 命令（可能被 timeout 包裹）
+  # PIPESTATUS 必须在函数内部读 —— 函数返回后它只剩下函数自身的状态
+  if [ -f "$RENDER_EV" ] && command -v python3 >/dev/null 2>&1; then
+    printf '%s' "$BODY" | "$@" 2>&1 | python3 "$RENDER_EV" | tee "$LAST_OUT"
+  else
+    printf '%s' "$BODY" | "$@" 2>&1 | tee "$LAST_OUT"
+  fi
+  RC=${PIPESTATUS[1]}          # pi（或 timeout）那一段
+}
+
 if [ "${TIMEOUT_SEC:-0}" -gt 0 ] 2>/dev/null; then
-  printf '%s' "$BODY" | timeout "$TIMEOUT_SEC" "${PI_CMD[@]}" "${PI_ARGS[@]}" 2>&1 | tee "$LAST_OUT"
+  run_pipeline timeout "$TIMEOUT_SEC" "${PI_CMD[@]}" "${PI_ARGS[@]}"
 else
-  printf '%s' "$BODY" | "${PI_CMD[@]}" "${PI_ARGS[@]}" 2>&1 | tee "$LAST_OUT"
+  run_pipeline "${PI_CMD[@]}" "${PI_ARGS[@]}"
 fi
-RC=${PIPESTATUS[1]}
 
 END=$(date +%s)
 SID=$(ls -t "$SESS_DIR" 2>/dev/null | grep '\.jsonl$' | head -1)
-STATUS=ok; [ "$RC" -eq 124 ] && STATUS=timeout; [ "$RC" -ne 0 ] && STATUS=fail
+STATUS=ok
+if [ "$RC" -eq 124 ]; then STATUS=timeout
+elif [ "$RC" -ne 0 ]; then STATUS=fail
+fi
 record_id end ",\"dur\":$((END - START)),\"exit\":$RC,\"status\":\"$STATUS\",\"session\":\"$SID\""
 [ -x "$HOOKS_DIR/notify" ] && "$HOOKS_DIR/notify" "$STATUS" "$NAME" "$RUN_ID" >/dev/null 2>&1 || true
 
