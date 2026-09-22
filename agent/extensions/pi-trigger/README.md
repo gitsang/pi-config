@@ -136,8 +136,20 @@ echo '{"topic_id":123}' | "$PI_TRIGGER_EMIT" --context-file -
 | `/pi-trigger:status <name>` | systemctl status |
 | `/pi-trigger:logs <name>` | journalctl 最近 80 行 |
 | `/pi-trigger:emit <name>` | **调试**：伪造一次事件，看 job 是否被正确触发（会真跑 pi，消耗 token） |
+| `/pi-trigger:panel-close` | 关闭所有 pi-trigger 输出面板 |
 
 agent 可调用 `pi_trigger_list`（只读）。
+
+### 输出面板怎么关
+
+`sync` / `list` / `status` / `logs` / `emit` 的输出都开在一个临时浮层面板里，
+不写进对话记录、关掉就没了：
+
+- `Esc`（或 `q` / `Enter`）关闭，`↑↓` / `PgUp` / `PgDn` / `Home` / `End` 滚动
+- `emit` 运行中按 `x` 可以直接终止它
+- `alt+w` 一键关掉 pi-scheduler + pi-trigger 的所有面板（`/pi-trigger:panel-close` 同效）
+
+RPC 模式没有 overlay，会退回旧的 `setWidget` 显示，同样可以关掉。
 
 ## 不用 pi-trigger 也行
 
