@@ -15,6 +15,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { claimPanelShortcut, hideAllPanels, Panel, releasePanelShortcut, type PanelContext, type PanelOptions } from "./panel.ts";
 
 const EXT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const RUN_JOB = path.join(EXT_DIR, "bin", "run-job");
@@ -396,6 +397,7 @@ function syncNow(): { ok: boolean; lines: string[]; errors: string[] } {
 // ---------------------------------------------------------------- ui helpers
 
 type Ctx = {
+  mode?: string;
   signal?: AbortSignal;
   ui: {
     notify(message: string, level: "info" | "warning" | "error"): void;
@@ -403,8 +405,9 @@ type Ctx = {
     select(title: string, options: string[], opts?: unknown): Promise<string | undefined>;
     input(title: string, placeholder?: string, opts?: unknown): Promise<string | undefined>;
     editor(title: string, prefilled?: string, opts?: unknown): Promise<string | undefined>;
-    setWidget(key: string, lines: string[]): void;
-    setStatus(key: string, text: string): void;
+    setWidget(key: string, lines: string[] | undefined, opts?: unknown): void;
+    setStatus(key: string, text: string | undefined): void;
+    custom(factory: unknown, options?: unknown): Promise<unknown>;
   };
 };
 
@@ -419,10 +422,16 @@ async function pickJob(ui: Ctx["ui"], what: string): Promise<string | undefined>
   return pick ?? undefined;
 }
 
-function showWidget(ui: Ctx["ui"], title: string, content: string[]): void {
-  const max = 60;
-  const lines = [`─ ${title} ─`, ...content].slice(-max);
-  ui.setWidget(WIDGET, lines);
+/**
+ * 打开一个可关闭的浮层面板展示结果。
+ *
+ * 为什么不直接用 ui.notify：notify 是把 Text 追加进 transcript，pi 没有提供
+ * 让用户清掉它的入口（只能 /reload 或换会话）。面板关掉即销毁，不留痕。
+ */
+function showPanel(ctx: Ctx, title: string, lines: string[], opts: Partial<PanelOptions> = {}): Panel {
+  const panel = new Panel({ title, lines, widgetKey: WIDGET, ...opts });
+  panel.show(ctx as unknown as PanelContext);
+  return panel;
 }
 
 // ---------------------------------------------------------------- tools（agent 可调用）
@@ -654,35 +663,43 @@ export default function (pi: ExtensionAPI): void {
         ui.notify(`job "${name}" already exists — use :update`, "error");
         return;
       }
-      const clearHelp = () => ui.setWidget(WIDGET, []);
-      showWidget(ui, `pi-scheduler:create ${name} — 填法速查`, SCHEDULE_HELP);
+      // 速查表只在填写过程中存在；每一步用同一个面板就地更新，不再往 transcript 追加。
+      const help = new Panel({
+        title: `pi-scheduler:create ${name} — 填法速查`,
+        lines: SCHEDULE_HELP,
+        widgetKey: WIDGET,
+        footer: `正在填写 ${name}… · Esc 关闭`,
+        // 填写向导要跟底部的 input 提示同时可见：贴顶部且不抢焦点。
+        overlay: { anchor: "top-center", nonCapturing: true },
+      });
+      const closeHelp = () => help.close();
+      help.show(ctx as unknown as PanelContext);
 
       const scheduleRaw = await ui.input(
         "触发时间 OnCalendar（留空=不装 timer，只由外部/手动触发；例: *-*-* 03:10:00）:",
         "",
       );
-      if (scheduleRaw === undefined) { clearHelp(); ui.notify("cancelled", "info"); return; }
+      if (scheduleRaw === undefined) { closeHelp(); ui.notify("cancelled", "info"); return; }
       const schedule = scheduleRaw.trim();
       const c = computeStoredSchedule(schedule);
       if (c.warn) {
-        clearHelp();
-        ui.notify(`schedule 不可用: ${c.warn}（试试上方示例里的写法）`, "error");
+        closeHelp();
+        ui.notify(`schedule 不可用: ${c.warn}`, "error");
         return;
       }
-      if (!schedule) ui.notify("schedule 留空 → 不注册 timer（可由外部/手动触发）", "info");
-      else ui.notify(`✓ schedule ok — 下次触发: ${nextFire(c.stored)}${c.note ? ` （${c.note}）` : ""}`, "info");
 
       const cwdRaw = await ui.input("工作目录 cwd（留空=$HOME；例: /home/you/src/repo）:", homedir());
-      if (cwdRaw === undefined) { clearHelp(); ui.notify("cancelled", "info"); return; }
+      if (cwdRaw === undefined) { closeHelp(); ui.notify("cancelled", "info"); return; }
       const modelRaw = await ui.input("模型 model（留空=当前默认；省钱例: claude-haiku-4-5）:", "");
-      if (modelRaw === undefined) { clearHelp(); ui.notify("cancelled", "info"); return; }
+      if (modelRaw === undefined) { closeHelp(); ui.notify("cancelled", "info"); return; }
       const timeoutRaw = await ui.input("超时秒数 timeoutSec（0=不限；防挂死例: 1800）:", "0");
-      if (timeoutRaw === undefined) { clearHelp(); ui.notify("cancelled", "info"); return; }
+      if (timeoutRaw === undefined) { closeHelp(); ui.notify("cancelled", "info"); return; }
 
       const cwd = cwdRaw.trim() || homedir();
       const model = modelRaw.trim();
       const timeoutSec = timeoutRaw.trim() || "0";
-      showWidget(ui, `pi-scheduler:create ${name} — 已填信息`, [
+      help.setTitle(`pi-scheduler:create ${name} — 已填信息`);
+      help.setLines([
         `  名称:      ${name}`,
         `  触发:      ${schedule || "(无 timer，只由外部/手动触发)"}${c.note ? `  ${c.note}` : ""}`,
         `  下次触发:  ${nextFire(c.stored)}`,
@@ -700,7 +717,7 @@ export default function (pi: ExtensionAPI): void {
 在这个文件里写 agent 要干的事。内容会原样作为 prompt 交给 \`pi -p\`。
 写清楚：干什么、在哪个目录/仓库、完成标准、失败时怎么办。`,
       );
-      if (!body?.trim()) { clearHelp(); ui.notify("empty prompt, cancelled", "info"); return; }
+      if (!body?.trim()) { closeHelp(); ui.notify("empty prompt, cancelled", "info"); return; }
 
       writeJob(name, {
         schedule,
@@ -711,10 +728,20 @@ export default function (pi: ExtensionAPI): void {
       }, body);
 
       const s = syncNow();
-      clearHelp();
-      ui.notify(`job "${name}" created. ${s.ok ? "timers synced" : "sync had errors"}`, s.ok ? "info" : "warning");
-      if (s.errors.length) ui.notify(s.errors.join("; "), "error");
-      showWidget(ui, `pi-scheduler: ${name}`, s.lines);
+      closeHelp();
+      const created = new Panel({
+        title: `pi-scheduler: ${name}`,
+        lines: [
+          `job "${name}" 已创建。`,
+          `触发: ${schedule || "(无 timer，只由外部/手动触发)"}${c.note ? `  ${c.note}` : ""}`,
+          `下次触发: ${nextFire(c.stored)}`,
+          s.ok ? "timers synced" : `sync had errors: ${s.errors.join("; ")}`,
+          "",
+          ...s.lines,
+        ],
+        widgetKey: WIDGET,
+      });
+      created.show(ctx as unknown as PanelContext);
     },
   });
 
@@ -736,8 +763,7 @@ export default function (pi: ExtensionAPI): void {
         out.push(`  cwd: ${meta.cwd || homedir()}  model: ${meta.model || "default"}  timeout: ${meta.timeoutSec || 0}s`);
         out.push(formatLastRun(lastRunRecord(name)));
       }
-      showWidget(ui, `pi-scheduler jobs (${names.length})`, out);
-      ui.notify(`${names.length} job(s)`, "info");
+      showPanel(ctx, `pi-scheduler jobs (${names.length})`, out);
     },
   });
 
@@ -819,7 +845,7 @@ export default function (pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("pi-scheduler:run", {
-    description: "Run a job now (foreground, streams output to a widget)",
+    description: "Run a job now (streams output into a closable panel)",
     getArgumentCompletions: (prefix) => {
       const f = listJobs().filter((n) => n.startsWith(prefix));
       return f.length ? f.map((n) => ({ value: n, label: n })) : null;
@@ -832,31 +858,50 @@ export default function (pi: ExtensionAPI): void {
         return;
       }
       ui.setStatus("pi-scheduler", `running ${name}…`);
-      const child = spawn("/bin/bash", [RUN_JOB, name], { env: { ...process.env, PI_SCHEDULER_DIR: DATA_DIR } });
-      const tail: string[] = [];
+
+      // 正在运行的子进程句柄，让面板的 x 键能终止它。
+      let child: ReturnType<typeof spawn> | undefined;
+      const panel = new Panel({
+        title: `pi-scheduler: 运行 ${name}`,
+        lines: [`$ run-job ${name}`],
+        widgetKey: WIDGET,
+        startAtBottom: true,
+        footer: "运行中… · Esc 关闭面板 · x 终止任务",
+        onKill: () => {
+          try {
+            child?.kill("SIGTERM");
+          } catch {
+            /* ignore */
+          }
+        },
+      });
+      panel.show(ctx as unknown as PanelContext);
+
+      child = spawn("/bin/bash", [RUN_JOB, name], { env: { ...process.env, PI_SCHEDULER_DIR: DATA_DIR } });
       let buf = "";
+      let killed = false;
       const flush = (final = false) => {
         const parts = buf.split("\n");
         buf = final ? "" : (parts.pop() ?? "");
-        for (const p of parts) {
-          if (p.length) { tail.push(p); if (tail.length > 30) tail.shift(); }
-        }
-        showWidget(ui, `pi-scheduler: running ${name}`, tail);
+        for (const p of parts) if (p.trim()) panel.appendLine(p);
       };
       child.stdout.on("data", (d) => { buf += d.toString(); flush(); });
       child.stderr.on("data", (d) => { buf += d.toString(); flush(); });
-      if (ctx.signal) ctx.signal.addEventListener("abort", () => child.kill("SIGTERM"), { once: true });
+      if (ctx.signal) ctx.signal.addEventListener("abort", () => { killed = true; child?.kill("SIGTERM"); }, { once: true });
       const code: number = await new Promise((resolve) => {
-        child.on("close", (c) => resolve(c ?? 1));
-        child.on("error", () => resolve(1));
+        child!.on("close", (c) => resolve(c ?? 1));
+        child!.on("error", () => resolve(1));
       });
       ui.setStatus("pi-scheduler", "");
       flush(true);
+
       const rec = lastRunRecord(name);
-      ui.notify(
-        rec ? `run finished: ${rec}` : `run-job exited with code ${code}`,
-        code === 0 ? "info" : "warning",
-      );
+      const summary = rec ? `run finished: ${rec}` : `run-job exited with code ${code}`;
+      panel.setTitle(`pi-scheduler: ${name} (exit ${code})`);
+      panel.setFooter("Esc 关闭 · ↑↓/PgUp/PgDn 滚动");
+      panel.appendLine("");
+      panel.appendLine(code === 0 ? `✓ ${summary}` : `✗ ${summary}`);
+      if (killed) panel.appendLine("(已手动终止)");
     },
   });
 
@@ -866,8 +911,11 @@ export default function (pi: ExtensionAPI): void {
       const ui = ctx.ui;
       const s = syncNow();
       if (s.errors.length) ui.notify(s.errors.join("; "), "error");
-      showWidget(ui, "pi-scheduler sync", s.lines);
-      ui.notify(s.ok ? `sync ok — ${s.lines.filter((l) => l.startsWith("job ")).length} job(s) managed` : "sync had errors", s.ok ? "info" : "error");
+      showPanel(ctx, "pi-scheduler sync", [
+        s.ok ? `sync ok — ${s.lines.filter((l) => l.startsWith("job ")).length} job(s) managed` : "sync had errors",
+        "",
+        ...s.lines,
+      ]);
     },
   });
 
@@ -885,9 +933,32 @@ export default function (pi: ExtensionAPI): void {
       if (r.code !== 0) { ui.notify(r.err.trim() || "no journal output", "info"); return; }
       const lines = r.out.trimEnd().split("\n").filter((l) => l.trim());
       if (!lines.length) { ui.notify("no journal output for this job yet", "info"); return; }
-      showWidget(ui, `journal: ${name}`, lines);
-      ui.notify(`${lines.length} journal line(s)`, "info");
+      showPanel(ctx, `journal: ${name}`, lines, { startAtBottom: true, footer: `Esc 关闭 · ↑↓ 滚动 （${lines.length} 行）` });
     },
+  });
+
+  // 兜底：一键收掉所有面板（也会清掉旧版遗留的 widget）。
+  pi.registerCommand("pi-scheduler:panel-close", {
+    description: "关闭所有 pi-scheduler 输出面板",
+    handler: async (_args, ctx) => {
+      const n = hideAllPanels(ctx.ui);
+      ctx.ui.notify(n ? `已关闭 ${n} 个面板` : "没有打开的面板", "info");
+    },
+  });
+  // 两个扩展共享一个「一键全关」快捷键，只有先加载的那个真正注册。
+  if (claimPanelShortcut()) {
+    pi.registerShortcut("alt+w", {
+      description: "关闭所有 pi 输出面板（pi-scheduler / pi-trigger）",
+      handler: async (ctx) => {
+        hideAllPanels(ctx.ui);
+      },
+    });
+  }
+
+  // /reload 会先发 session_shutdown 再加载新实例；
+  // 在这里释放声明，新实例才能重新注册 alt+w。
+  pi.on("session_shutdown", () => {
+    releasePanelShortcut();
   });
 
   registerSchedulerTools(pi);

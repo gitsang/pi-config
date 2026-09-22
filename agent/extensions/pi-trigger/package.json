@@ -19,6 +19,7 @@
     "manifest.ts",
     "systemd.ts",
     "sync.ts",
+    "panel.ts",
     "bin",
     "README.md"
   ],

@@ -20,6 +20,7 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { isError, listTriggerDirs, loadManifest, NAME_RE, type Manifest } from "./manifest.ts";
 import { DATA_DIR, syncNow, unitName, systemctl, sh } from "./systemd.ts";
+import { claimPanelShortcut, hideAllPanels, Panel, releasePanelShortcut, type PanelContext, type PanelOptions } from "./panel.ts";
 
 const WIDGET = "pi-trigger";
 
@@ -28,12 +29,24 @@ type Ui = {
   confirm(title: string, body: string, opts?: unknown): Promise<boolean>;
   select(title: string, options: string[], opts?: unknown): Promise<string | undefined>;
   input(title: string, placeholder?: string, opts?: unknown): Promise<string | undefined>;
-  setWidget(key: string, lines: string[]): void;
-  setStatus(key: string, text: string): void;
+  setWidget(key: string, lines: string[] | undefined, opts?: unknown): void;
+  setStatus(key: string, text: string | undefined): void;
+  custom(factory: unknown, options?: unknown): Promise<unknown>;
 };
 
-function showWidget(ui: Ui, title: string, content: string[]): void {
-  ui.setWidget(WIDGET, [`─ ${title} ─`, ...content].slice(-60));
+/** 命令 handler 收到的 ctx（只用到这几个字段）。 */
+type Ctx = { hasUI?: boolean; mode?: string; ui: Ui };
+
+/**
+ * 打开一个可关闭的浮层面板展示结果。
+ *
+ * 为什么不直接用 ui.notify：notify 是把 Text 追加进 transcript，pi 没有提供
+ * 让用户清掉它的入口（只能 /reload 或换会话）。面板关掉即销毁，不留痕。
+ */
+function showPanel(ctx: Ctx, title: string, lines: string[], opts: Partial<PanelOptions> = {}): Panel {
+  const panel = new Panel({ title, lines, widgetKey: WIDGET, ...opts });
+  panel.show(ctx as unknown as PanelContext);
+  return panel;
 }
 
 function readManifests(): Array<Manifest | { name: string; errors: string[] }> {
@@ -93,18 +106,19 @@ function registerCommands(pi: ExtensionAPI): void {
       const ui = ctx.ui;
       const s = syncNow();
       if (s.errors.length) ui.notify(s.errors.join("; "), "error");
-      showWidget(ui, "pi-trigger sync", s.lines);
-      ui.notify(s.ok ? `sync ok — ${s.lines.filter((l) => l.startsWith("trigger ")).length} trigger(s)` : "sync had errors", s.ok ? "info" : "error");
+      showPanel(ctx, "pi-trigger sync", [
+        s.ok ? `sync ok — ${s.lines.filter((l) => l.startsWith("trigger ")).length} trigger(s)` : "sync had errors",
+        "",
+        ...s.lines,
+      ]);
     },
   });
 
   pi.registerCommand("pi-trigger:list", {
     description: "List declared triggers and their systemd state",
     handler: async (_args, ctx) => {
-      const ui = ctx.ui;
       const lines = statusLines();
-      showWidget(ui, `pi-trigger (${listTriggerDirs(DATA_DIR).length})`, lines);
-      ui.notify(`${listTriggerDirs(DATA_DIR).length} trigger(s)`, "info");
+      showPanel(ctx, `pi-trigger (${listTriggerDirs(DATA_DIR).length})`, lines);
     },
   });
 
@@ -120,8 +134,9 @@ function registerCommands(pi: ExtensionAPI): void {
       if (!name) return;
       const r = sh("systemctl", ["--user", "status", "--no-pager", "-n", "30", unitName(name)]);
       const lines = (r.out + r.err).trimEnd().split("\n").filter((l) => l.trim());
-      showWidget(ui, `status: ${name}`, lines);
-      ui.notify(lines.length ? `${lines.length} line(s)` : "no output", "info");
+      showPanel(ctx, `status: ${name}`, lines.length ? lines : ["(no output)"], {
+        footer: `Esc 关闭 · ↑↓ 滚动 （${lines.length} 行）`,
+      });
     },
   });
 
@@ -139,8 +154,10 @@ function registerCommands(pi: ExtensionAPI): void {
       if (r.code !== 0) { ui.notify(r.err.trim() || "no journal output", "info"); return; }
       const lines = r.out.trimEnd().split("\n").filter((l) => l.trim());
       if (!lines.length) { ui.notify("no journal output for this trigger yet", "info"); return; }
-      showWidget(ui, `journal: ${name}`, lines);
-      ui.notify(`${lines.length} journal line(s)`, "info");
+      showPanel(ctx, `journal: ${name}`, lines, {
+        startAtBottom: true,
+        footer: `Esc 关闭 · ↑↓ 滚动 （${lines.length} 行）`,
+      });
     },
   });
 
@@ -208,23 +225,76 @@ function registerCommands(pi: ExtensionAPI): void {
       );
       if (!ok) { ui.notify("已取消", "info"); return; }
       const emit = path.join(path.dirname(fileURLToPath(import.meta.url)), "bin", "emit");
-      const child = spawn("/bin/bash", [emit, "--context-json", JSON.stringify({ manual: true, trigger: name })], {
+
+      // 正在运行的子进程句柄，让面板的 x 键能终止它。
+      let child: ReturnType<typeof spawn> | undefined;
+      const panel = new Panel({
+        title: `pi-trigger: emit ${name}`,
+        lines: [`$ emit → job ${m.emit.job}`],
+        widgetKey: WIDGET,
+        startAtBottom: true,
+        footer: "运行中… · Esc 关闭面板 · x 终止",
+        onKill: () => {
+          try {
+            child?.kill("SIGTERM");
+          } catch {
+            /* ignore */
+          }
+        },
+      });
+      panel.show(ctx as unknown as PanelContext);
+
+      child = spawn("/bin/bash", [emit, "--context-json", JSON.stringify({ manual: true, trigger: name })], {
         env: { ...process.env, PI_TRIGGER_JOB: m.emit.job, PI_TRIGGER_NAME: name },
       });
-      const tail: string[] = [];
       let buf = "";
       const sink = (d: Buffer) => {
         buf += d.toString();
         const parts = buf.split("\n");
         buf = parts.pop() ?? "";
-        for (const p of parts) if (p.trim()) { tail.push(p); if (tail.length > 30) tail.shift(); }
+        for (const p of parts) if (p.trim()) panel.appendLine(p);
       };
       child.stdout.on("data", sink);
       child.stderr.on("data", sink);
-      const code: number = await new Promise((res) => { child.on("close", (c) => res(c ?? 1)); child.on("error", () => res(1)); });
-      showWidget(ui, `pi-trigger: emit ${name}`, tail);
-      ui.notify(`emit exit=${code}${code === 75 ? " (job 正忙，已跳过)" : ""}`, code === 0 ? "info" : "warning");
+      const code: number = await new Promise((res) => {
+        child!.on("close", (c) => res(c ?? 1));
+        child!.on("error", () => res(1));
+      });
+      panel.setTitle(`pi-trigger: emit ${name} (exit ${code})`);
+      panel.setFooter("Esc 关闭 · ↑↓/PgUp/PgDn 滚动");
+      panel.appendLine("");
+      panel.appendLine(
+        code === 0
+          ? "✓ emit ok"
+          : code === 75
+            ? "• job 正忙，已跳过（exit 75）"
+            : `✗ emit 失败 exit=${code}`,
+      );
     },
+  });
+
+  // 兜底：一键收掉所有面板（也会清掉旧版遗留的 widget）。
+  pi.registerCommand("pi-trigger:panel-close", {
+    description: "关闭所有 pi-trigger 输出面板",
+    handler: async (_args, ctx) => {
+      const n = hideAllPanels(ctx.ui);
+      ctx.ui.notify(n ? `已关闭 ${n} 个面板` : "没有打开的面板", "info");
+    },
+  });
+  // 两个扩展共享一个「一键全关」快捷键，只有先加载的那个真正注册。
+  if (claimPanelShortcut()) {
+    pi.registerShortcut("alt+w", {
+      description: "关闭所有 pi 输出面板（pi-scheduler / pi-trigger）",
+      handler: async (ctx) => {
+        hideAllPanels(ctx.ui);
+      },
+    });
+  }
+
+  // /reload 会先发 session_shutdown 再加载新实例；
+  // 在这里释放声明，新实例才能重新注册 alt+w。
+  pi.on("session_shutdown", () => {
+    releasePanelShortcut();
   });
 }
 
