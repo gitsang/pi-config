@@ -186,15 +186,29 @@
           }
         },
         {
-          "id": "mimo-v2.5-pro",
-          "name": "MiMo V2.5 Pro",
+          "id": "mimo-pro",
+          "name": "MiMo Pro",
           "contextWindow": 1048576,
           "maxTokens": 131072,
-          "input": ["text"],
+          "input": ["text", "image"],
+          "reasoning": true,
+          "cost": {
+            "input": 3.0,
+            "output": 6.0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        },
+        {
+          "id": "mimo-flash",
+          "name": "MiMo Flash",
+          "contextWindow": 1048576,
+          "maxTokens": 131072,
+          "input": ["text", "image"],
           "reasoning": true,
           "cost": {
             "input": 1.0,
-            "output": 3.0,
+            "output": 2.0,
             "cacheRead": 0,
             "cacheWrite": 0
           }
