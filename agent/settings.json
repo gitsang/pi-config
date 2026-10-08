@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "0.86.1",
+  "lastChangelogVersion": "1.1.0",
   "theme": "dark",
   "defaultProvider": "saigw",
   "defaultModel": "deepseek-flash",
@@ -7,11 +7,13 @@
   "hideThinkingBlock": false,
   "packages": [
     "https://github.com/cathrynlavery/diagram-design",
+    "https://github.com/ayghri/i-have-adhd",
     "npm:@tintinweb/pi-tasks",
     "npm:@tintinweb/pi-subagents",
-    "https://github.com/ayghri/i-have-adhd"
+    "npm:@termdraw/pi"
   ],
   "modelThinkingLevels": {
     "saigw/deepseek-flash": "high"
   }
 }
+
