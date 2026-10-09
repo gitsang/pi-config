@@ -3,7 +3,7 @@
   "theme": "dark",
   "defaultTools": ["+codemode"],
   "defaultProvider": "saigw",
-  "defaultModel": "deepseek-flash",
+  "defaultModel": "mimo-pro",
   "defaultThinkingLevel": "high",
   "hideThinkingBlock": false,
   "packages": [
@@ -14,7 +14,7 @@
     "npm:@termdraw/pi"
   ],
   "modelThinkingLevels": {
-    "saigw/deepseek-flash": "high"
+    "saigw/deepseek-flash": "high",
+    "saigw/mimo-pro": "high"
   }
 }
-
