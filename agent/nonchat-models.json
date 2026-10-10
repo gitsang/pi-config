@@ -1,0 +1,36 @@
+{
+  "providers": {
+    "saigw-classifier": {
+      "name": "SAIGW Classifier",
+      "baseUrl": "https://aigw.cn.c8g.top/v1",
+      "auth": { "env": "SAIGW_API_KEY", "storedProvider": "saigw" },
+      "models": [
+        {
+          "type": "classifier",
+          "implementation": "chat-classify",
+          "id": "deepseek-flash",
+          "name": "DeepSeek Flash (classifier)",
+          "input": ["text", "image"],
+          "contextWindow": 1000000,
+          "cost": { "input": 0.14, "output": 0.28, "cacheRead": 0.0028, "cacheWrite": 0 }
+        }
+      ]
+    },
+    "yealink-images": {
+      "name": "Yealink Images",
+      "baseUrl": "https://yllm.worklink.work/yllm/v1",
+      "auth": { "env": "YEALINK_API_KEY", "storedProvider": "yealink" },
+      "models": [
+        {
+          "type": "image",
+          "implementation": "images-generations",
+          "id": "azure/gpt-image-2.5-flare",
+          "name": "GPT Image 2.5 Flare",
+          "input": ["text"],
+          "output": ["image"],
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        }
+      ]
+    }
+  }
+}
