@@ -20,10 +20,11 @@ bin/
 *.bak.*
 
 # ===== Runtime history =====
-checkpoints/
-sessions/
 scheduler/
 trigger/
+agent/checkpoints/
+agent/sessions/
+agent/install/
 
 # ===== Agents =====
 .worktrees

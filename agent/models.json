@@ -49,6 +49,37 @@
           }
         },
         {
+          "id": "gpt-6.1-sol",
+          "name": "GPT 6.1 Sol",
+          "api": "openai-responses",
+          "contextWindow": 1050000,
+          "maxTokens": 128000,
+          "input": ["text", "image"],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "xhigh",
+            "max": "max"
+          },
+          "cost": {
+            "input": 10,
+            "output": 50,
+            "cacheRead": 1,
+            "cacheWrite": 12.5,
+            "tiers": [
+              {
+                "inputTokensAbove": 272000,
+                "input": 20,
+                "output": 75,
+                "cacheRead": 2,
+                "cacheWrite": 25
+              }
+            ]
+          }
+        },
+        {
           "id": "gemini-3.8-flash",
           "name": "Gemini 3.8 Flash",
           "contextWindow": 1048576,
