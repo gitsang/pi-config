@@ -274,27 +274,32 @@ function npmBinOf(file: string): string {
   return "";
 }
 
-/** 解析 pi：优先扫当前 PATH（交互式 shim，realpath 后通常是 cli.js）；再试 bash -lc。 */
+/** managed install（~/.pi/agent/bin/pi 是 shell 启动器，realpath 不是 cli.js）→ 解析 releases/<ver>/…/cli.js。 */
+function managedCli(): { cli?: string; npmBin?: string } {
+  const root = process.env.PI_MANAGED_INSTALL_ROOT ?? path.join(homedir(), ".pi", "agent", "install");
+  try {
+    const ver = fs.readFileSync(path.join(root, "current-version"), "utf8").trim();
+    const real = fs.realpathSync(path.join(root, "releases", ver, "node_modules", ".bin", "pi"));
+    return real.endsWith(".js") ? { cli: real, npmBin: npmBinOf(real) } : {};
+  } catch { return {}; }
+}
+
+/** 解析 pi：优先扫当前 PATH（交互式 shim，realpath 后通常是 cli.js）；再试 bash -lc；最后走 managed install。 */
 function resolvePi(): { cli?: string; npmBin?: string } {
-  const dirs = (process.env.PATH ?? "").split(":");
-  for (const d of dirs) {
-    if (!d) continue;
-    try {
-      const cand = path.join(d, "pi");
-      if (fs.existsSync(cand) && fs.statSync(cand).isFile()) {
-        const real = fs.realpathSync(cand);
-        return { cli: real.endsWith(".js") ? real : undefined, npmBin: npmBinOf(real) };
-      }
-    } catch { /* try next */ }
+  const candidates: string[] = [];
+  for (const d of (process.env.PATH ?? "").split(":")) {
+    if (d) candidates.push(path.join(d, "pi"));
   }
   const r = sh("bash", ["-lc", "command -v pi"]);
-  if (r.code === 0 && r.out.trim()) {
+  if (r.code === 0 && r.out.trim()) candidates.push(r.out.trim());
+  for (const cand of candidates) {
     try {
-      const real = fs.realpathSync(r.out.trim());
-      return { cli: real.endsWith(".js") ? real : undefined, npmBin: npmBinOf(real) };
-    } catch { /* fallthrough */ }
+      if (!fs.existsSync(cand) || !fs.statSync(cand).isFile()) continue;
+      const real = fs.realpathSync(cand);
+      if (real.endsWith(".js")) return { cli: real, npmBin: npmBinOf(real) };
+    } catch { /* try next */ }
   }
-  return {};
+  return managedCli();
 }
 
 /** 生成 env：真实 node/pi 路径。node 或 pi 升级后重跑 :sync 即可刷新。 */
@@ -304,7 +309,7 @@ function writeEnv(): { ok: boolean; note?: string } {
   const content = [
     `export PI_NODE="${nodeBin}/node"`,
     cli ? `export PI_CLI="${cli}"` : "# PI_CLI unresolved; run-job falls back to `pi` on PATH",
-    `export PI_SCHEDULER_PATH="${[nodeBin, npmBin, "/usr/bin", "/bin"].filter(Boolean).join(":")}"`,
+    `export PI_SCHEDULER_PATH="${[nodeBin, npmBin, path.join(homedir(), ".pi", "agent", "bin"), "/usr/bin", "/bin"].filter(Boolean).join(":")}"`,
     "",
   ].join("\n");
   ensureDir(DATA_DIR);

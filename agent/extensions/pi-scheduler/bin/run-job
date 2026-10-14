@@ -82,10 +82,12 @@ if [ -f "$DATA_DIR/env" ]; then
   . "$DATA_DIR/env"
   export PATH="${PI_SCHEDULER_PATH:-$PATH}"   # 仅 systemd/cron 等极简环境才收紧 PATH
 fi
-if [ -n "${PI_NODE:-}" ] && [ -n "${PI_CLI:-}" ]; then
+if [ -n "${PI_NODE:-}" ] && [ -n "${PI_CLI:-}" ] && [ -f "$PI_CLI" ]; then
   PI_CMD=("$PI_NODE" "$PI_CLI")
 else
-  PI_CMD=(pi)   # 兜底：本机 PATH 里有 pi 时（手动调试）
+  # 兜底：pi 启动器（自解析版本）。PI_CLI 缺失/文件已被卸载时也能跑。
+  export PATH="$HOME/.pi/agent/bin:$PATH"
+  PI_CMD=(pi)
 fi
 
 # --- frontmatter 解析：仅当文件首行是 ---；扁平 key: value（允许双引号包裹）---
