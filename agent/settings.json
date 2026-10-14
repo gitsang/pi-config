@@ -5,7 +5,7 @@
     "+codemode"
   ],
   "defaultProvider": "saigw",
-  "defaultModel": "mimo-pro",
+  "defaultModel": "deepseek-flash",
   "defaultThinkingLevel": "high",
   "hideThinkingBlock": false,
   "packages": [
