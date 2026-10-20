@@ -15,6 +15,12 @@
     "npm:@tintinweb/pi-subagents",
     "npm:@termdraw/pi"
   ],
+  "retry": {
+    "enabled": true,
+    "maxRetries": 5,
+    "baseDelayMs": 3000,
+    "maxAgentDelayMs": 60000
+  },
   "modelThinkingLevels": {
     "saigw/deepseek-flash": "high",
     "saigw/mimo-pro": "high"
