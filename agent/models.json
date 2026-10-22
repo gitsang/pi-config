@@ -15,7 +15,7 @@
         {
           "id": "claude-sonnet-5",
           "name": "Claude Sonnet 5",
-          "baseUrl": "https://aigw.cn.c8g.top/anthropic/v1",
+          "baseUrl": "https://aigw.cn.c8g.top/anthropic",
           "api": "anthropic-messages",
           "contextWindow": 1048576,
           "maxTokens": 131072,
