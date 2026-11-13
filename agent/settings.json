@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "1.4.0",
+  "lastChangelogVersion": "1.5.2",
   "theme": "dark",
   "defaultTools": [
     "+codemode"
@@ -24,5 +24,9 @@
   "modelThinkingLevels": {
     "saigw/deepseek-flash": "high",
     "saigw/mimo-pro": "high"
+  },
+  "extensionChangelogVersions": {
+    "{\"source\":\"npm:@tintinweb/pi-tasks\",\"scope\":\"user\"}": "0.9.1",
+    "{\"source\":\"npm:@tintinweb/pi-subagents\",\"scope\":\"user\"}": "0.23.2"
   }
 }
