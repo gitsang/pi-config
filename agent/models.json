@@ -23,6 +23,12 @@
           "reasoning": true,
           "compat": {
             "forceAdaptiveThinking": true
+          },
+          "cost": {
+            "input": 4.4,
+            "output": 22,
+            "cacheRead": 0.22,
+            "cacheWrite": 0
           }
         },
         {
@@ -57,6 +63,29 @@
           }
         },
         {
+          "id": "gemini",
+          "name": "Gemini",
+          "contextWindow": 1048576,
+          "maxTokens": 65535,
+          "input": ["text", "image"],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "off": null,
+            "minimal": null,
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": null,
+            "max": null
+          },
+          "cost": {
+            "input": 1.5,
+            "output": 7.5,
+            "cacheRead": 0.075,
+            "cacheWrite": 0
+          }
+        },
+        {
           "id": "deepseek",
           "name": "DeepSeek",
           "contextWindow": 1000000,
@@ -81,29 +110,6 @@
             "input": 0.14,
             "output": 0.28,
             "cacheRead": 0.0028,
-            "cacheWrite": 0
-          }
-        },
-        {
-          "id": "gemini",
-          "name": "Gemini",
-          "contextWindow": 1048576,
-          "maxTokens": 65535,
-          "input": ["text", "image"],
-          "reasoning": true,
-          "thinkingLevelMap": {
-            "off": null,
-            "minimal": null,
-            "low": "low",
-            "medium": "medium",
-            "high": "high",
-            "xhigh": null,
-            "max": null
-          },
-          "cost": {
-            "input": 1.5,
-            "output": 7.5,
-            "cacheRead": 0.075,
             "cacheWrite": 0
           }
         },
@@ -170,12 +176,6 @@
             "supportsDeveloperRole": false,
             "requiresReasoningContentOnAssistantMessages": true,
             "thinkingFormat": "deepseek"
-          },
-          "cost": {
-            "input": 0.14,
-            "output": 0.28,
-            "cacheRead": 0.0028,
-            "cacheWrite": 0
           }
         },
         {
@@ -192,21 +192,6 @@
             "high": "high",
             "xhigh": "xhigh",
             "max": "max"
-          },
-          "cost": {
-            "input": 10,
-            "output": 50,
-            "cacheRead": 1,
-            "cacheWrite": 12.5,
-            "tiers": [
-              {
-                "inputTokensAbove": 272000,
-                "input": 20,
-                "output": 75,
-                "cacheRead": 2,
-                "cacheWrite": 25
-              }
-            ]
           }
         }
       ]
@@ -216,32 +201,12 @@
       "api": "openai-completions",
       "models": [
         {
-          "id": "deepseek-flash",
-          "name": "DeepSeek Flash",
+          "id": "auto",
+          "name": "Auto",
           "contextWindow": 1000000,
-          "maxTokens": 384000,
+          "maxTokens": 128000,
           "input": ["text", "image"],
-          "reasoning": true,
-          "thinkingLevelMap": {
-            "minimal": null,
-            "low": "low",
-            "medium": null,
-            "high": "high",
-            "xhigh": null,
-            "max": "max"
-          },
-          "compat": {
-            "supportsStore": false,
-            "supportsDeveloperRole": false,
-            "requiresReasoningContentOnAssistantMessages": true,
-            "thinkingFormat": "deepseek"
-          },
-          "cost": {
-            "input": 0.14,
-            "output": 0.28,
-            "cacheRead": 0.0028,
-            "cacheWrite": 0
-          }
+          "reasoning": true
         }
       ]
     }
