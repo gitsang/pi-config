@@ -13,8 +13,8 @@
           "reasoning": true
         },
         {
-          "id": "claude-sonnet-5",
-          "name": "Claude Sonnet 5",
+          "id": "claude",
+          "name": "Claude",
           "baseUrl": "https://aigw.cn.c8g.top/anthropic",
           "api": "anthropic-messages",
           "contextWindow": 1048576,
@@ -26,8 +26,8 @@
           }
         },
         {
-          "id": "gpt-6-astra",
-          "name": "GPT 6 Astra",
+          "id": "gpt",
+          "name": "GPT",
           "api": "openai-responses",
           "contextWindow": 1050000,
           "maxTokens": 128000,
@@ -57,8 +57,8 @@
           }
         },
         {
-          "id": "deepseek-flash",
-          "name": "DeepSeek Flash",
+          "id": "deepseek",
+          "name": "DeepSeek",
           "contextWindow": 1000000,
           "maxTokens": 384000,
           "input": ["text", "image"],
