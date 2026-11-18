@@ -1,5 +1,5 @@
 {
-  "model": "saigw/deepseek-flash",
+  "model": "saigw/auto",
   "onFirstTurn": true,
   "onCompact": true,
   "refreshEveryTurns": 3,
